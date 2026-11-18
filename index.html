@@ -158,20 +158,39 @@ db = {
 };
 usr = { canEdit: () => true };
 
-let pch = null;
+/* ===== Perbaikan: presence channel ===== */
+let pch = null, pchStatus = '', lastPresence = null;
 room = {
   onPeers: (cb) => {
     pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
-    pch.on('presence', { event: 'sync' }, () => {
+
+    const emit = () => {
+      if (!pch) return;
       const state = pch.presenceState();
       const peers = [];
       for (const key in state) for (const p of state[key]) peers.push({ peer: key, presence: p });
       cb({ peers });
-    }).subscribe();
+    };
+
+    pch
+      .on('presence', { event: 'sync'  }, emit)
+      .on('presence', { event: 'join'  }, emit)
+      .on('presence', { event: 'leave' }, emit)
+      .subscribe((status) => {
+        pchStatus = status;
+        if (status === 'SUBSCRIBED') {
+          if (lastPresence && lastPresence.t !== 'x') {
+            pch.track(lastPresence).catch(() => {});
+          }
+          setTimeout(emit, 100);
+        }
+      });
   },
   presence: (obj) => {
+    lastPresence = obj;
     if (!pch) return;
     if (obj.t === 'x') { pch.untrack().catch(() => {}); return; }
+    if (pchStatus !== 'SUBSCRIBED') return; // tunggu channel siap, nanti dikirim otomatis
     pch.track(obj).catch(() => {});
   }
 };
@@ -252,7 +271,7 @@ function world(){
    else{const gp=GP[(o.x*5|0)%3];
     G.add(mesh(new THREE.CylinderGeometry(.55,1,1,8),bark,0,.95*s,0,.17*s,1.9*s,.17*s));
     for(const d of[-1,1]){const b=mesh(new THREE.CylinderGeometry(.5,1,1,6),bark,d*.28*s,1.85*s,0,.07*s,.9*s,.07*s);b.rotation.z=-d*.7;G.add(b)}
-    [[0,2.7,0,1,1],[-.75,2.25,.2,.75,0],[.75,2.35,-.1,.8,1],[.1,2.2,.75,.7,0],[-.15,2.4,-.75,.7,1],[0,3.3,.05,.7,2],[.5,3.0,.4,.55,2]].forEach(([x,y,z,r,c],i)=>G.add(lf(gp[c],x*s,y*s,z*s,r*s,sd+i*3)))}}
+    [[0,2.7,0,1,1],[-.75,2.25,.2,.75,0],[.75,2.35,-.1,.8,1],[.1,2.2,.75,.7,0],[-.15,2.4,-.75,.7,1],[0,3.3,.05,.7,2],[.5,3.0,.4,.55,2]].forEach(([x,y,z,r,c],i)=>G.add(lf(gp[c],x*s,y*s,z*s,r*s,sd+i*3)))}} 
   else if(o.k=='palm'){
    for(let i=0;i<6;i++){const t=(i+.5)/6,m=mesh(new THREE.CylinderGeometry(.75,1,1,8),bark,.55*s*t*t,(i+.5)*.47*s,0,.13*s*(1-.4*t),.49*s,.13*s*(1-.4*t));m.rotation.z=-.22*t*1.6;G.add(m)}
    const tx=.5*s,ty=2.85*s;
@@ -297,7 +316,7 @@ function world(){
  for(let i=0;i<14;i++){const an=i/14*2*PI;SC.add(mesh(jg(new THREE.DodecahedronGeometry(1,0),.2,i),rm,gx+Math.cos(an)*4.7,.25,cz+2.1+Math.sin(an)*3.4,.35+R9()*.2,.28,.35+R9()*.2))}
  for(let i=0;i<5;i++)SC.add(mesh(SG,new THREE.MeshBasicMaterial({color:'#fff',transparent:true,opacity:.7}),gx-1.2+i*.6,.25,cz+.7,.3,.2,.3));
 
- const FN={M:'X...X/XX.XX/X.X.X/X...X/X...X/X...X/X...X',E:'XXXXX/X..../X..../XXXX./X..../X..../XXXXX',G:'.XXXX/X..../X..../X.XXX/X...X/X...X/.XXX.',A:'.XXX./X...X/X...X/XXXXX/X...X/X...X/X...X',B:'XXXX./X...X/X...X/XXXX./X...X/X...X/XXXX.',O:'.XXX./X...X/X...X/X...X/X...X/X...X/.XXX.',N:'X...X/XX..X/XX..X/X.X.X/X..XX/X..XX/X...X',D:'XXXX./X...X/X...X/X...X/X...X/X...X/XXXX.',V:'X...X/X...X/X...X/X...X/X...X/.X.X./..X..',T:'XXXXX/..X../..X../..X../..X../..X../..X..',U:'X...X/X...X/X...X/X...X/X...X/X...X/.XXX.',R:'XXXX./X...X/X...X/XXXX./X.X../X..X./X...X',I:'XXXXX/..X../..X../..X../..X../..X../XXXXX','3':'XXXX./....X/....X/.XXX./....X/....X/XXXX.',W:'X...X/X...X/X...X/X.X.X/X.X.X/XX.XX/X...X',S:'.XXXX/X..../X..../.XXX./....X/....X/XXXX.'},cells=[];
+ const FN={M:'X...X/XX.XX/X.X.X/X...X/X...X/X...X/X...X',E:'XXXXX/X..../X..../XXXX./X..../X..../X..../XXXXX',G:'.XXXX/X..../X..../X.XXX/X...X/X...X/.XXX.',A:'.XXX./X...X/X...X/XXXXX/X...X/X...X/X...X',B:'XXXX./X...X/X...X/XXXX./X...X/X...X/XXXX.',O:'.XXX./X...X/X...X/X...X/X...X/X...X/.XXX.',N:'X...X/XX..X/XX..X/X.X.X/X..XX/X..XX/X...X',D:'XXXX./X...X/X...X/X...X/X...X/X...X/XXXX.',V:'X...X/X...X/X...X/X...X/X...X/.X.X./..X..',T:'XXXXX/..X../..X../..X../..X../..X../..X..',U:'X...X/X...X/X...X/X...X/X...X/X...X/.XXX.',R:'XXXX./X...X/X...X/XXXX./X.X../X..X./X...X',I:'XXXXX/..X../..X../..X../..X../..X../XXXXX','3':'XXXX./....X/....X/.XXX./....X/....X/XXXX.',W:'X...X/X...X/X...X/X.X.X/X.X.X/XX.XX/X...X',S:'.XXXX/X..../X..../.XXX./....X/....X/XXXX.'},cells=[];
  const word=(t,c,cx,y0,z,dp)=>{const w=t.length*6-1;t.split('').forEach((ch,li)=>{const f=FN[ch];if(!f)return;f.split('/').forEach((row,ry)=>{for(let rx=0;rx<5;rx++)if(row[rx]=='X')cells.push([cx+(li*6+rx-(w-1)/2)*c,y0+(6-ry+.5)*c,z,c,dp])})})};
  const woodT=(c0,c1,sd)=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),r=rng(sd);g.fillStyle=c0;g.fillRect(0,0,128,128);for(let i=0;i<46;i++){g.strokeStyle=c1;g.globalAlpha=.25+r()*.4;g.lineWidth=1+r()*2;g.beginPath();const y=r()*128;g.moveTo(0,y);g.bezierCurveTo(40,y+(r()-.5)*10,90,y+(r()-.5)*10,128,y+(r()-.5)*6);g.stroke()}g.globalAlpha=1;const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t};
  const wL=woodT('#d9a867','#8a5a2b',3),wD=woodT('#6a4426','#2f1b0b',8),SZ=gz-8.9,BY=4.95,BW=12.8,BH=4.9;
@@ -350,7 +369,7 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300)};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300);sendP()};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 function sendP(){if(mode=='s')room.presence({t:'s',n:nm,x:+P.x.toFixed(2),y:+P.y.toFixed(2),a:+P.f.toFixed(2),z:+Pz.toFixed(2),wg:wc,s:sc,v:av,c:cc,at:cc?+(sT/cc).toFixed(1):0})}
