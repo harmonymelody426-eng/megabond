@@ -104,7 +104,7 @@ small{opacity:.7}#db,#jb{position:absolute;z-index:3;border-radius:50%;padding:0
 /* ============================================================
    KONFIGURASI SUPABASE — GANTI DUA BARIS INI
    ============================================================ */
-const SUPABASE_URL = 'https://vbxrhvadrtrpkipfvht.supabase.co';
+const SUPABASE_URL = 'https://vbxrhvadrtrpkipfviht.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZieHJodmFkcnRycGtpcGZ2aWh0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwMTA3NTYsImV4cCI6MjExMDU4Njc1Nn0.yQIOiA-I1CKD1sn2VZW3act-vQW4IrFGaXRX9Eg8kSA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const makeId = () => (crypto.randomUUID ? crypto.randomUUID() : 'p' + Math.random().toString(36).slice(2) + Date.now());
