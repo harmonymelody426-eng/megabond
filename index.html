@@ -158,12 +158,11 @@ db = {
 };
 usr = { canEdit: () => true };
 
-/* ===== Perbaikan: presence channel ===== */
+/* ===== Presence: hanya identitas (bukan posisi) ===== */
 let pch = null, pchStatus = '', lastPresence = null;
 room = {
   onPeers: (cb) => {
     pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
-
     const emit = () => {
       if (!pch) return;
       const state = pch.presenceState();
@@ -171,17 +170,14 @@ room = {
       for (const key in state) for (const p of state[key]) peers.push({ peer: key, presence: p });
       cb({ peers });
     };
-
     pch
       .on('presence', { event: 'sync'  }, emit)
       .on('presence', { event: 'join'  }, emit)
       .on('presence', { event: 'leave' }, emit)
       .subscribe((status) => {
         pchStatus = status;
-        if (status === 'SUBSCRIBED') {
-          if (lastPresence && lastPresence.t !== 'x') {
-            pch.track(lastPresence).catch(() => {});
-          }
+        if (status === 'SUBSCRIBED' && lastPresence && lastPresence.t !== 'x') {
+          pch.track(lastPresence).catch(() => {});
           setTimeout(emit, 100);
         }
       });
@@ -190,10 +186,21 @@ room = {
     lastPresence = obj;
     if (!pch) return;
     if (obj.t === 'x') { pch.untrack().catch(() => {}); return; }
-    if (pchStatus !== 'SUBSCRIBED') return; // tunggu channel siap, nanti dikirim otomatis
+    if (pchStatus !== 'SUBSCRIBED') return;
     pch.track(obj).catch(() => {});
   }
 };
+
+/* ===== Broadcast: jalur posisi real-time (tidak ganggu presence) ===== */
+let bch = null, bchReady = false, lastPos = {x:-1,y:-1,z:-1,a:-1};
+bch = sb.channel('game-broadcast', { config: { broadcast: { self: false } } });
+bch.on('broadcast', { event: 'pos' }, ({ payload }) => {
+  if (mode !== 'g') return;
+  const t = TP[payload.id];
+  if (!t) return;
+  t.px = payload.x; t.py = payload.z; t.pz = payload.y; t.pa = payload.a;
+});
+bch.subscribe((status) => { bchReady = (status === 'SUBSCRIBED'); });
 
 const col=id=>`hsl(${Math.abs([...id].reduce((a,c)=>a*31+c.charCodeAt(0)|0,7))%360} 70% 55%)`;
 const toLines=l=>l.map(x=>[x.q,...x.o,x.a+1].join(' | ')).join('\n');
@@ -372,7 +379,27 @@ pvInit();
 $('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300);sendP()};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
-function sendP(){if(mode=='s')room.presence({t:'s',n:nm,x:+P.x.toFixed(2),y:+P.y.toFixed(2),a:+P.f.toFixed(2),z:+Pz.toFixed(2),wg:wc,s:sc,v:av,c:cc,at:cc?+(sT/cc).toFixed(1):0})}
+
+/* >>> KIRIM POSISI LEWAT BROADCAST, IDENTITAS LEWAT PRESENCE <<< */
+let lastIdent = '';
+function sendP(){
+ if(mode!='s')return;
+ // Posisi real-time via broadcast (bisa sering)
+ if(bchReady){
+  const x=+P.x.toFixed(2),y=+P.y.toFixed(2),z=+Pz.toFixed(2),a=+P.f.toFixed(2);
+  if(Math.abs(x-lastPos.x)>.01||Math.abs(y-lastPos.y)>.01||Math.abs(z-lastPos.z)>.01||Math.abs(a-lastPos.a)>.01){
+   lastPos={x,y,z,a};
+   bch.send({type:'broadcast',event:'pos',payload:{id:myPeerId,x,y,z,a}}).catch(()=>{});
+  }
+ }
+ // Identitas via presence (hanya saat berubah, jadi presence tidak "flap")
+ const at = cc?+(sT/cc).toFixed(1):0;
+ const ident = JSON.stringify({n:nm,v:av,s:sc,c:cc,wg:wc,at});
+ if(ident!==lastIdent){
+  lastIdent=ident;
+  room.presence({t:'s',n:nm,v:av,s:sc,c:cc,wg:wc,at,x:+P.x.toFixed(2),y:+P.y.toFixed(2),z:+Pz.toFixed(2),a:+P.f.toFixed(2)});
+ }
+}
 const km={ArrowUp:'f',w:'f',ArrowDown:'b',s:'b',ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r'};
 function jump(){if(mode!='s'||open||cl)return;if(Pz<=gh(P.x,P.y)+.06)vy=7.5}
 onkeydown=e=>{if(mode!='s')return;if(km[e.key])K[km[e.key]]=1;if(e.key=='e')dig();if(e.key==' '){e.preventDefault();jump()}};
@@ -382,7 +409,7 @@ $('#bk').onclick=()=>{
  if(mode=='s'&&nm){
   sb.from('player_stats').insert({name:nm,avatar_index:av,score:sc,correct:cc,wrong:wc,avg_time:cc?sT/cc:0}).then(()=>{}).catch(()=>{});
  }
- mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';room.presence({t:'x'});show('home')};
+ mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';lastIdent='';room.presence({t:'x'});show('home')};
 $('#bt').onclick=()=>{mode='';$('#gm').textContent='';room.presence({t:'x'});show('home')};
 const touch=matchMedia('(pointer:coarse)').matches;
 const cvs=$('#cv');cvs.style.touchAction='none';let T0=null;function rs(){if(!R3)return;R3.setSize(innerWidth,innerHeight,false);CM.aspect=innerWidth/innerHeight;CM.updateProjectionMatrix()}addEventListener('resize',()=>{if(mode=='s')rs()});
@@ -468,9 +495,13 @@ function tm(){
   const w=tc.clientWidth,h=tc.clientHeight;if(w&&h&&(R4._w!=w||R4._h!=h)){R4.setSize(w,h,false);R4._w=w;R4._h=h;CT.aspect=w/h;CT.updateProjectionMatrix()}
   const top=Math.max(0,...peers.map(p=>p.presence.s||0)),ids=new Set();
   for(const p of peers){const q=p.presence,id=p.peer;ids.add(id);let e=TP[id];
-   if(!e||e.v!=q.v){if(e)SC.remove(e.G);const G=buildAv(q.v||0),L=mkLab();G.position.set(q.x,0,q.y);G.add(L.sp);G.scale.setScalar(2);SC.add(G);e=TP[id]={G,v:q.v,L,sc:2,w:0,k:''}}
-   const G=e.G,tp=q.s>0&&q.s==top,dx=q.x-G.position.x,dz=q.y-G.position.z,f=Math.min(1,dt*8),mv=Math.hypot(dx,dz)>.03?1:0;
-   G.position.x+=dx*f;G.position.z+=dz*f;G.position.y+=((q.z||0)-G.position.y)*f;e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(q.a||0);
+   if(!e||e.v!=q.v){if(e)SC.remove(e.G);const G=buildAv(q.v||0),L=mkLab();G.position.set(q.x,0,q.y);G.add(L.sp);G.scale.setScalar(2);SC.add(G);e=TP[id]={G,v:q.v,L,sc:2,w:0,k:'',px:q.x,py:q.z||0,pz:q.y,pa:q.a||0}}
+   const G=e.G,tp=q.s>0&&q.s==top;
+   const f=Math.min(1,dt*8);
+   const dx=(e.px-G.position.x),dy=(e.py-G.position.y),dz=(e.pz-G.position.z);
+   const mv=Math.hypot(dx,dz)>.03?1:0;
+   G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
+   e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-e.pa;
    e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
    const k=q.n+'|'+q.s+'|'+tp;if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,tp)}}
   for(const id in TP)if(!ids.has(id)){SC.remove(TP[id].G);delete TP[id]}
