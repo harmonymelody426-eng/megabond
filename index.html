@@ -129,10 +129,11 @@ let Q=[
  {q:"Alat apa yang dipakai arkeolog untuk membersihkan benda rapuh?",o:["Kuas halus","Palu godam","Cangkul besar","Gergaji"],a:0},
  {q:"Ilmu yang mempelajari peninggalan manusia masa lalu disebut…",o:["Geologi","Arkeologi","Astronomi","Biologi"],a:1},
  {q:"Hasil galian yang disebut artefak adalah benda…",o:["Buatan manusia","Alami saja","Berupa awan","Berupa cuaca"],a:0}];
-let room,db,usr,mode='',P={x:6,y:6,a:.8,f:.8},sc=0,nm='',found={},K={},near=null,nearT=null,open=false,peers=[],Z=1,px=0,py=0,tmOn=false;
+let db,usr,mode='',P={x:6,y:6,a:.8,f:.8},sc=0,nm='',found={},K={},near=null,nearT=null,open=false,Z=1,px=0,py=0,tmOn=false;
+const RC={},TP={};
+let cl=null,readM={},wr=0,cc=0,sT=0,wc=0,AT={},SQ={},Pz=0,vy=0,dg=null,cb=0;const lk=()=>wr>=2&&MT.length>0;
 
 /* ===== Wrapper Supabase ===== */
-const myPeerId = makeId();
 db = {
   doc: (path) => {
     const key = path.replace('cfg/', '');
@@ -158,51 +159,78 @@ db = {
 };
 usr = { canEdit: () => true };
 
-/* ===== Presence & Broadcast Realtime ===== */
-let pch = null, pchStatus = '', lastPresence = null;
-let bch = null, bchReady = false, lastPos = {x:-1,y:-1,z:-1,a:-1};
+/* ============================================================
+   PURE BROADCAST UNTUK REAL-TIME GAME STATE (Posisi & Skor)
+   ============================================================ */
+const myPeerId = makeId();
+let bch = sb.channel('game-broadcast', { config: { broadcast: { self: false } } });
+let bchReady = false;
+let lastBroadcast = 0;
 
-// Channel 1: Identitas & Skor (Presence)
-room = {
-  onPeers: (cb) => {
-    pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
-    const emit = () => {
-      if (!pch) return;
-      const state = pch.presenceState();
-      const peers = [];
-      for (const key in state) for (const p of state[key]) peers.push({ peer: key, presence: p });
-      cb({ peers });
-    };
-    pch
-      .on('presence', { event: 'sync'  }, emit)
-      .on('presence', { event: 'join'  }, emit)
-      .on('presence', { event: 'leave' }, emit)
-      .subscribe((status) => {
-        pchStatus = status;
-        if (status === 'SUBSCRIBED' && lastPresence && lastPresence.t !== 'x') {
-          pch.track(lastPresence).catch(() => {});
-          setTimeout(emit, 100);
-        }
-      });
-  },
-  presence: (obj) => {
-    lastPresence = obj;
-    if (!pch) return;
-    if (obj.t === 'x') { pch.untrack().catch(() => {}); return; }
-    if (pchStatus !== 'SUBSCRIBED') return;
-    pch.track(obj).catch(() => {});
-  }
-};
-
-// Channel 2: Posisi Real-time (Broadcast)
-bch = sb.channel('game-broadcast', { config: { broadcast: { self: false } } });
-bch.on('broadcast', { event: 'pos' }, ({ payload }) => {
+// Guru: Dengarkan data dari siswa
+bch.on('broadcast', { event: 'state' }, ({ payload }) => {
   if (mode !== 'g') return;
-  const t = TP[payload.id];
-  if (!t) return;
-  t.px = payload.x; t.py = payload.z; t.pz = payload.y; t.pa = payload.a;
+  
+  const now = Date.now();
+  const id = payload.id;
+  
+  let changed = false;
+  if (!RC[id] || RC[id].s !== payload.s || RC[id].n !== payload.n || RC[id].v !== payload.v) {
+    changed = true;
+  }
+  
+  RC[id] = {
+    n: payload.n, v: payload.v, s: payload.s, c: payload.c, wg: payload.wg, at: payload.at,
+    on: 1, lastSeen: now
+  };
+  
+  let e = TP[id];
+  if (!e || e.v !== payload.v) {
+    if (e) SC.remove(e.G);
+    const G = buildAv(payload.v || 0), L = mkLab();
+    G.position.set(payload.x, payload.z, payload.y);
+    G.add(L.sp);
+    G.scale.setScalar(2);
+    SC.add(G);
+    e = TP[id] = { G, v: payload.v, L, sc: 2, w: 0, k: '', px: payload.x, py: payload.z, pz: payload.y, pa: payload.a };
+    changed = true;
+  } else {
+    e.px = payload.x;
+    e.py = payload.z;
+    e.pz = payload.y;
+    e.pa = payload.a;
+  }
+  
+  if (changed) lb();
 });
-bch.subscribe((status) => { bchReady = (status === 'SUBSCRIBED'); });
+
+// Guru: Dengarkan jika siswa logout
+bch.on('broadcast', { event: 'leave' }, ({ payload }) => {
+  if (mode !== 'g') return;
+  const id = payload.id;
+  if (RC[id]) delete RC[id];
+  if (TP[id]) { SC.remove(TP[id].G); delete TP[id]; }
+  lb();
+});
+
+bch.subscribe((status) => {
+  bchReady = (status === 'SUBSCRIBED');
+});
+
+// Guru: Bersihkan siswa yang terputus (tidak mengirim data > 3 detik)
+setInterval(() => {
+  if (mode !== 'g') return;
+  const now = Date.now();
+  let changed = false;
+  for (const id in RC) {
+    if (now - RC[id].lastSeen > 3000) {
+      delete RC[id];
+      if (TP[id]) { SC.remove(TP[id].G); delete TP[id]; }
+      changed = true;
+    }
+  }
+  if (changed) lb();
+}, 2000);
 
 const col=id=>`hsl(${Math.abs([...id].reduce((a,c)=>a*31+c.charCodeAt(0)|0,7))%360} 70% 55%)`;
 const toLines=l=>l.map(x=>[x.q,...x.o,x.a+1].join(' | ')).join('\n');
@@ -216,13 +244,11 @@ const toMT=l=>l.map(m=>m.t+'\n'+m.b).join('\n---\n');
 const parseMT=t=>t.split(/^\s*---\s*$/m).map(x=>x.trim()).filter(Boolean).slice(0,8).map(x=>{const i=x.indexOf('\n');return{t:(i<0?x:x.slice(0,i)).trim().slice(0,60),b:i<0?'':x.slice(i+1).trim().slice(0,1500)}});
 const mm=t=>$('#mmsg').textContent=t;
 $('#med').value=toMT(MT);
-const RC={};let cl=null,readM={},wr=0,cc=0,sT=0,wc=0,AT={},SQ={},Pz=0,vy=0,dg=null,cb=0;const lk=()=>wr>=2&&MT.length>0;
 
-/* Listener awal */
+/* Listener awal DB */
 if(usr.canEdit())$('#bg').hidden=false;
 db.doc('cfg/materi').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)){MT=s.data().list;$('#med').value=toMT(MT);if(R3)signs()}},()=>{});
 db.doc('cfg/questions').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)&&s.data().list.length){Q=s.data().list;$('#ed').value=toLines(Q)}},()=>{});
-room.onPeers(c=>{peers=c.peers.filter(p=>p.presence&&p.presence.t==='s');const on=new Set(peers.map(p=>p.peer));for(const k in RC)if(!on.has(k))RC[k].on=0;peers.forEach(p=>{const q=p.presence;RC[p.peer]={n:q.n,v:q.v,s:q.s,c:q.c||0,wg:q.wg||0,at:q.at||0,on:1}});lb()},()=>{});
 
 /* ---------- Avatar ---------- */
 const AV=[
@@ -378,34 +404,10 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300);sendP()};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();lastBroadcast=0;if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 
-/* >>> JALUR DATA: BROADCAST (Posisi) + PRESENCE (Identitas / Heartbeat) <<< */
-let lastIdent = '', lastTrack = 0;
-function sendP(){
- if(mode!='s')return;
- 
- // 1. Posisi real-time via broadcast (cepat & ringan)
- if(bchReady){
-  const x=+P.x.toFixed(2),y=+P.y.toFixed(2),z=+Pz.toFixed(2),a=+P.f.toFixed(2);
-  if(Math.abs(x-lastPos.x)>.01||Math.abs(y-lastPos.y)>.01||Math.abs(z-lastPos.z)>.01||Math.abs(a-lastPos.a)>.01){
-   lastPos={x,y,z,a};
-   bch.send({type:'broadcast',event:'pos',payload:{id:myPeerId,x,y,z,a}}).catch(()=>{});
-  }
- }
- 
- // 2. Identitas via presence (dikirim setiap 3 detik agar koneksi tetap hidup)
- const at = cc?+(sT/cc).toFixed(1):0;
- const ident = JSON.stringify({n:nm,v:av,s:sc,c:cc,wg:wc,at});
- const now = Date.now();
- if(ident!==lastIdent || now-lastTrack > 3000){
-  lastIdent=ident;
-  lastTrack=now;
-  room.presence({t:'s',n:nm,v:av,s:sc,c:cc,wg:wc,at,x:+P.x.toFixed(2),y:+P.y.toFixed(2),z:+Pz.toFixed(2),a:+P.f.toFixed(2)});
- }
-}
 const km={ArrowUp:'f',w:'f',ArrowDown:'b',s:'b',ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r'};
 function jump(){if(mode!='s'||open||cl)return;if(Pz<=gh(P.x,P.y)+.06)vy=7.5}
 onkeydown=e=>{if(mode!='s')return;if(km[e.key])K[km[e.key]]=1;if(e.key=='e')dig();if(e.key==' '){e.preventDefault();jump()}};
@@ -415,8 +417,9 @@ $('#bk').onclick=()=>{
  if(mode=='s'&&nm){
   sb.from('player_stats').insert({name:nm,avatar_index:av,score:sc,correct:cc,wrong:wc,avg_time:cc?sT/cc:0}).then(()=>{}).catch(()=>{});
  }
- mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';lastIdent='';lastTrack=0;room.presence({t:'x'});show('home')};
-$('#bt').onclick=()=>{mode='';$('#gm').textContent='';room.presence({t:'x'});show('home')};
+ bch.send({ type: 'broadcast', event: 'leave', payload: { id: myPeerId } }).catch(()=>{});
+ mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';show('home')};
+$('#bt').onclick=()=>{mode='';$('#gm').textContent='';bch.send({ type: 'broadcast', event: 'leave', payload: { id: myPeerId } }).catch(()=>{});show('home')};
 const touch=matchMedia('(pointer:coarse)').matches;
 const cvs=$('#cv');cvs.style.touchAction='none';let T0=null;function rs(){if(!R3)return;R3.setSize(innerWidth,innerHeight,false);CM.aspect=innerWidth/innerHeight;CM.updateProjectionMatrix()}addEventListener('resize',()=>{if(mode=='s')rs()});
 cvs.onpointerdown=e=>{if(mode=='s'&&e.pointerType=='mouse')dig()};
@@ -431,7 +434,7 @@ let JX=0,JY=0,mvg=0,cpv=0;
  cz.onpointerup=cz.onpointercancel=e=>{if(e.pointerId===cid)cid=null};
 })();
 $('#db').onpointerdown=e=>{e.preventDefault();dig()};
-let last=0,run=false,iv=null;
+let last=0,run=false;
 function loop(t){if(mode!='s'){run=false;return}
  const dt=Math.min(.05,(t-last)/1000);last=t;mvg=0;
  if(!open){
@@ -447,6 +450,17 @@ function loop(t){if(mode!='s'){run=false;return}
  nearT=open?null:OB.find(o=>o.k=='kelapa'&&o.i<MT.length&&Math.hypot(o.x-P.x,o.y-P.y)<o.r+1.3)||null;
  $('#hint').textContent=lk()?(nearT?'🔒 Salah 2x! Tekan tombol sekop / E untuk memanjat dan baca materi':'🔒 Salah 2x! Cari pohon kelapa (cincin emas) dan baca materinya'):near?(touch?'Harta karun dekat! Tekan tombol sekop untuk menggali':'Harta karun di dekatmu! Tekan E / klik untuk menggali'):nearT?(touch?'Pohon kelapa! Tekan tombol untuk memanjat':'Pohon kelapa! Tekan E / klik untuk memanjat dan baca materi'):'Cari titik emas berkilau (puncak bukit: lompat naik tiap tingkat!)';
  {const rd=!!(near&&!lk())||!!nearT;$('#db').classList.toggle('rd',rd);$('#dl').textContent=(!near||lk())&&nearT?'PANJAT':'GALI'}
+ 
+ // BROADCAST STATE KE GURU (10 kali per detik)
+ if(bchReady && t-lastBroadcast > 100){
+   lastBroadcast = t;
+   const at = cc ? +(sT / cc).toFixed(1) : 0;
+   bch.send({ type: 'broadcast', event: 'state', payload: {
+     id: myPeerId, n: nm, v: av, s: sc, c: cc, wg: wc, at: at,
+     x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +Pz.toFixed(2), a: +P.f.toFixed(2)
+   }}).catch(() => {});
+ }
+ 
  draw3();requestAnimationFrame(loop)
 }
 function climb(o){open=true;K={};const dx=o.x-P.x,dy=o.y-P.y,d=Math.hypot(dx,dy)||1;P.a=P.f=Math.atan2(dy,dx);P.x=o.x-dx/d*.42;P.y=o.y-dy/d*.42;cl={o,y:0,ph:'up'}}
@@ -469,7 +483,6 @@ function ask(s){if(mode!='s'){open=false;return}const t0=performance.now(),q=Q[(
    m.append(r,c);
    if(ok){found[s.i]=1;sc+=bs+bn;cc++;sT+=el;wr=0}else{AT[s.i]=at+1;sc=Math.max(0,sc-5);wr++;wc++}
    $('#sc').textContent=sc+' poin';
-   sendP();
   };
   m.append(b);
  });
@@ -477,12 +490,12 @@ function ask(s){if(mode!='s'){open=false;return}const t0=performance.now(),q=Q[(
 
 /* ---------- Guru ---------- */
 $('#pw').onkeydown=e=>{if(e.key=='Enter')$('#bg').click()};
-$('#bg').onclick=()=>{const pw=$('#pw');if(pw.hidden){pw.hidden=false;pw.focus();return $('#gm').textContent='Masukkan password guru, lalu tekan Mode Guru lagi.'}if(pw.value!=='123sule')return $('#gm').textContent='Password salah.';if(!initT())return;mode='g';sh(75,260);show('teach');room.presence({t:'g'});if(!tmOn){tmOn=true;tm()}};
+$('#bg').onclick=()=>{const pw=$('#pw');if(pw.hidden){pw.hidden=false;pw.focus();return $('#gm').textContent='Masukkan password guru, lalu tekan Mode Guru lagi.'}if(pw.value!=='123sule')return $('#gm').textContent='Password salah.';if(!initT())return;mode='g';sh(75,260);show('teach');if(!tmOn){tmOn=true;tm()}};
 document.querySelectorAll('nav [data-t]').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x==b));
  $('#mon').hidden=b.dataset.t!='mon';$('#qs').hidden=b.dataset.t!='qs';$('#mt').hidden=b.dataset.t!='mt'});
 $('#zi').onclick=()=>Z=Math.min(6,Z*1.3);$('#zo').onclick=()=>Z=Math.max(.6,Z/1.3);
-const tc=$('#tc');let R4,CT,sfog,tfog,az=0,el=.85,TP={},tl=0;
+const tc=$('#tc');let R4,CT,sfog,tfog,az=0,el=.85,tl=0;
 const sh=(n,f)=>{const c=dl.shadow.camera;c.left=c.bottom=-n;c.right=c.top=n;c.far=f;c.updateProjectionMatrix()};
 function initT(){
  if(R4)return true;
@@ -499,46 +512,20 @@ function tm(){
  if(mode=='g'&&!$('#mon').hidden&&R4){
   const t=performance.now()/1000,dt=Math.min(.1,t-tl||.016);tl=t;if(WF)WF.offset.y=t*1.25;
   const w=tc.clientWidth,h=tc.clientHeight;if(w&&h&&(R4._w!=w||R4._h!=h)){R4.setSize(w,h,false);R4._w=w;R4._h=h;CT.aspect=w/h;CT.updateProjectionMatrix()}
-  const top=Math.max(0,...peers.map(p=>p.presence.s||0)),ids=new Set();
-  for(const p of peers){
-   const q=p.presence,id=p.peer;ids.add(id);
-   let e=TP[id];
-   if(!e){
-    const G=buildAv(q.v||0),L=mkLab();
-    G.position.set(q.x||6, q.z||0, q.y||6);
-    G.add(L.sp);G.scale.setScalar(2);
-    SC.add(G);
-    e=TP[id]={G,v:q.v,L,sc:2,w:0,k:'',px:q.x||6,py:q.z||0,pz:q.y||6,pa:q.a||0};
-   } else if(e.v!=q.v){
-    SC.remove(e.G);
-    const G=buildAv(q.v||0),L=mkLab();
-    G.position.set(q.x||6, q.z||0, q.y||6);
-    G.add(L.sp);G.scale.setScalar(2);
-    SC.add(G);
-    e=TP[id]={G,v:q.v,L,sc:2,w:0,k:'',px:q.x||6,py:q.z||0,pz:q.y||6,pa:q.a||0};
-   } else {
-    // Fallback pembaruan koordinat via presence
-    e.px = q.x !== undefined ? q.x : e.px;
-    e.py = q.z !== undefined ? q.z : e.py;
-    e.pz = q.y !== undefined ? q.y : e.pz;
-    e.pa = q.a !== undefined ? q.a : e.pa;
-   }
-
-   const G=e.G,tp=q.s>0&&q.s==top;
-   const f=Math.min(1,dt*8);
-   // Pastikan tidak ada nilai NaN yang bisa menghilangkan avatar
-   const tx = e.px !== undefined && !isNaN(e.px) ? e.px : G.position.x;
-   const ty = e.py !== undefined && !isNaN(e.py) ? e.py : G.position.y;
-   const tz = e.pz !== undefined && !isNaN(e.pz) ? e.pz : G.position.z;
-   
-   const dx=(tx-G.position.x),dy=(ty-G.position.y),dz=(tz-G.position.z);
+  
+  const top=Math.max(0,...Object.values(RC).map(r=>r.s||0));
+  
+  for(const id in TP){
+   const e=TP[id],G=e.G,tp=RC[id]&&RC[id].s>0&&RC[id].s===top;
+   const f=Math.min(1,dt*10);
+   const dx=(e.px-G.position.x),dy=(e.py-G.position.y),dz=(e.pz-G.position.z);
    const mv=Math.hypot(dx,dz)>.03?1:0;
    G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
    e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(e.pa||0);
    e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
-   const k=q.n+'|'+q.s+'|'+tp;if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,tp)}
+   const k=(RC[id]?.n||'')+'|'+(RC[id]?.s||0)+'|'+tp;if(k!=e.k){e.k=k;labDraw(e.L,RC[id]?.n||'Siswa',RC[id]?.s||0,tp)}
   }
-  for(const id in TP)if(!ids.has(id)){SC.remove(TP[id].G);delete TP[id]}
+  
   const d=110/Z;CT.position.set(36+Math.sin(az)*Math.cos(el)*d,Math.sin(el)*d,36+Math.cos(az)*Math.cos(el)*d);CT.lookAt(36,0,36);
   dl.position.set(62,70,52);dl.target.position.set(36,0,36);SC.fog=tfog;R4.render(SC,CT);
  }
@@ -557,15 +544,17 @@ $('#xl').onclick=()=>{
  catch(e){flash('Gagal mengunduh: '+(e.message||e))}
 };
 function stt(){
- const a=Object.values(RC),c=a.reduce((x,r)=>x+r.c,0),w=a.reduce((x,r)=>x+(r.wg||0),0),n=a.filter(r=>r.on).length;
- const status = pchStatus || 'Offline';
- $('#st').textContent=`[${status}] 👥 ${n} online · ${a.length} total · rata-rata ${a.length?Math.round(a.reduce((x,r)=>x+r.s,0)/a.length):0} poin · akurasi ${c+w?Math.round(c*100/(c+w)):0}% (${c} benar, ${w} salah)`;
+ const a=Object.values(RC),c=a.reduce((x,r)=>x+r.c,0),w=a.reduce((x,r)=>x+(r.wg||0),0),n=a.length;
+ const status = bchReady ? 'Online' : 'Offline';
+ $('#st').textContent=`[${status}] 👥 ${n} online · rata-rata ${n?Math.round(a.reduce((x,r)=>x+r.s,0)/n):0} poin · akurasi ${c+w?Math.round(c*100/(c+w)):0}% (${c} benar, ${w} salah)`;
 }
 function lb(){stt();
  const o=$('#lb');o.innerHTML='';
- [...peers].sort((a,b)=>b.presence.s-a.presence.s||(a.presence.at||99)-(b.presence.at||99)).forEach((p,i)=>{
-  const l=document.createElement('li');l.textContent=`${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${p.presence.n} — ${p.presence.s} poin · ${p.presence.c||0} benar · ${p.presence.wg||0} salah${p.presence.at?' · rata-rata '+p.presence.at+' dtk':''}`;l.style.borderColor=AV[p.presence.v]?AV[p.presence.v].c:col(p.peer);o.append(l)});
- if(!peers.length){const l=document.createElement('li');l.textContent='Menunggu siswa bergabung…';o.append(l)}
+ const arr = Object.entries(RC).map(([id, r]) => ({ id, ...r }));
+ arr.sort((a,b)=>b.s-a.s||(a.at||99)-(b.at||99));
+ arr.forEach((r,i)=>{
+  const l=document.createElement('li');l.textContent=`${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${r.n} — ${r.s} poin · ${r.c||0} benar · ${r.wg||0} salah${r.at?' · rata-rata '+r.at+' dtk':''}`;l.style.borderColor=AV[r.v]?AV[r.v].c:col(r.id);o.append(l)});
+ if(!arr.length){const l=document.createElement('li');l.textContent='Menunggu siswa bergabung…';o.append(l)}
 }
 $('#sv').onclick=async()=>{
  const l=parse($('#ed').value);
