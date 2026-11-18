@@ -160,77 +160,59 @@ db = {
 usr = { canEdit: () => true };
 
 /* ============================================================
-   PURE BROADCAST UNTUK REAL-TIME GAME STATE (Posisi & Skor)
+   KOMUNIKASI REALTIME (PRESENCE + BROADCAST)
    ============================================================ */
 const myPeerId = makeId();
-let bch = sb.channel('game-broadcast', { config: { broadcast: { self: false } } });
-let bchReady = false;
-let lastBroadcast = 0;
+let pch = null, pchStatus = '', lastPresence = null;
+let peers = [];
 
-// Guru: Dengarkan data dari siswa
-bch.on('broadcast', { event: 'state' }, ({ payload }) => {
-  if (mode !== 'g') return;
-  
-  const now = Date.now();
-  const id = payload.id;
-  
-  let changed = false;
-  if (!RC[id] || RC[id].s !== payload.s || RC[id].n !== payload.n || RC[id].v !== payload.v) {
-    changed = true;
+room = {
+  onPeers: (cb) => {
+    pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
+    
+    const emit = () => {
+      if (!pch) return;
+      const state = pch.presenceState();
+      const p = [];
+      for (const key in state) for (const pres of state[key]) p.push({ peer: key, presence: pres });
+      cb({ peers: p });
+    };
+
+    pch
+      .on('presence', { event: 'sync' }, emit)
+      .on('presence', { event: 'join' }, emit)
+      .on('presence', { event: 'leave' }, emit)
+      .on('broadcast', { event: 'pos' }, ({ payload }) => {
+        // Update posisi langsung di memori lokal
+        for (const p of peers) {
+          if (p.peer === payload.id) {
+            p.presence.x = payload.x;
+            p.presence.y = payload.y;
+            p.presence.z = payload.z;
+            p.presence.a = payload.a;
+          }
+        }
+      })
+      .subscribe((status) => {
+        pchStatus = status;
+        if (status === 'SUBSCRIBED' && lastPresence && lastPresence.t !== 'x') {
+          pch.track(lastPresence).catch(() => {});
+          setTimeout(emit, 100);
+        }
+      });
+  },
+  presence: (obj) => {
+    lastPresence = obj;
+    if (!pch) return;
+    if (obj.t === 'x') { pch.untrack().catch(() => {}); return; }
+    if (pchStatus !== 'SUBSCRIBED') return;
+    pch.track(obj).catch(() => {});
+  },
+  broadcast: (payload) => {
+    if (pchStatus !== 'SUBSCRIBED') return;
+    pch.send({ type: 'broadcast', event: 'pos', payload }).catch(() => {});
   }
-  
-  RC[id] = {
-    n: payload.n, v: payload.v, s: payload.s, c: payload.c, wg: payload.wg, at: payload.at,
-    on: 1, lastSeen: now
-  };
-  
-  let e = TP[id];
-  if (!e || e.v !== payload.v) {
-    if (e) SC.remove(e.G);
-    const G = buildAv(payload.v || 0), L = mkLab();
-    G.position.set(payload.x, payload.z, payload.y);
-    G.add(L.sp);
-    G.scale.setScalar(2);
-    SC.add(G);
-    e = TP[id] = { G, v: payload.v, L, sc: 2, w: 0, k: '', px: payload.x, py: payload.z, pz: payload.y, pa: payload.a };
-    changed = true;
-  } else {
-    e.px = payload.x;
-    e.py = payload.z;
-    e.pz = payload.y;
-    e.pa = payload.a;
-  }
-  
-  if (changed) lb();
-});
-
-// Guru: Dengarkan jika siswa logout
-bch.on('broadcast', { event: 'leave' }, ({ payload }) => {
-  if (mode !== 'g') return;
-  const id = payload.id;
-  if (RC[id]) delete RC[id];
-  if (TP[id]) { SC.remove(TP[id].G); delete TP[id]; }
-  lb();
-});
-
-bch.subscribe((status) => {
-  bchReady = (status === 'SUBSCRIBED');
-});
-
-// Guru: Bersihkan siswa yang terputus (tidak mengirim data > 3 detik)
-setInterval(() => {
-  if (mode !== 'g') return;
-  const now = Date.now();
-  let changed = false;
-  for (const id in RC) {
-    if (now - RC[id].lastSeen > 3000) {
-      delete RC[id];
-      if (TP[id]) { SC.remove(TP[id].G); delete TP[id]; }
-      changed = true;
-    }
-  }
-  if (changed) lb();
-}, 2000);
+};
 
 const col=id=>`hsl(${Math.abs([...id].reduce((a,c)=>a*31+c.charCodeAt(0)|0,7))%360} 70% 55%)`;
 const toLines=l=>l.map(x=>[x.q,...x.o,x.a+1].join(' | ')).join('\n');
@@ -249,6 +231,18 @@ $('#med').value=toMT(MT);
 if(usr.canEdit())$('#bg').hidden=false;
 db.doc('cfg/materi').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)){MT=s.data().list;$('#med').value=toMT(MT);if(R3)signs()}},()=>{});
 db.doc('cfg/questions').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)&&s.data().list.length){Q=s.data().list;$('#ed').value=toLines(Q)}},()=>{});
+
+/* Sinkronisasi Leaderboard dengan Presence */
+room.onPeers(c=>{
+  peers=c.peers.filter(p=>p.presence&&p.presence.t==='s');
+  const on=new Set(peers.map(p=>p.peer));
+  for(const k in RC)if(!on.has(k))RC[k].on=0;
+  peers.forEach(p=>{
+    const q=p.presence;
+    RC[p.peer]={n:q.n,v:q.v,s:q.s,c:q.c||0,wg:q.wg||0,at:q.at||0,on:1}
+  });
+  if(mode=='g') lb();
+},()=>{});
 
 /* ---------- Avatar ---------- */
 const AV=[
@@ -291,6 +285,7 @@ function buildAv(id){
  const arms=[-1,1].map(d=>{const a=lim(d*.33,1.0,.34,.075,shirt,mesh(SG,skin,0,-.37,0,.08,.08,.08));a.rotation.z=d*.12;body.add(a);return a});
  const sv=new THREE.Group();sv.add(mesh(CG,M('#8a5a2b'),0,-.45,0,.025,.9,.025),mesh(BG,M('#aab2b8',{metalness:.6}),0,-.95,0,.12,.2,.03));sv.position.y=-.37;sv.visible=false;arms[1].add(sv);G.userData={body,legs,arms,head,sv};return G}
 function animAv(G,w,mv,t){const u=G.userData;u.legs[0].rotation.x=Math.sin(w)*.7*mv;u.legs[1].rotation.x=-Math.sin(w)*.7*mv;u.arms[0].rotation.x=-Math.sin(w)*.6*mv;u.arms[1].rotation.x=Math.sin(w)*.6*mv;u.body.position.y=Math.abs(Math.sin(w))*.05*mv+Math.sin(t*2)*.01;u.head.rotation.y=Math.sin(t*.8)*.08*(1-mv)}
+
 function world(){
  const gm=M('#5aa845',{roughness:1}),g=mesh(new THREE.PlaneGeometry(220,220),gm,24,0,24,1,1,1);g.rotation.x=-Math.PI/2;g.receiveShadow=true;g.castShadow=false;SC.add(g);
  const w=mesh(CG,M('#e9cf86'),POND[0],.01,POND[1],POND[2]+1,.02,POND[2]+1),wa=mesh(CG,new THREE.MeshStandardMaterial({color:'#2f9ad0',roughness:.08,metalness:.3}),POND[0],.04,POND[1],POND[2],.04,POND[2]);SC.add(w,wa);
@@ -404,9 +399,31 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();lastBroadcast=0;if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}};
+let ivPos = null, ivId = null;
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();
+ // Broadcast posisi 10x per detik
+ if(ivPos)clearInterval(ivPos);
+ ivPos = setInterval(sendP, 100);
+ // Broadcast identitas 1x per 2 detik
+ if(ivId)clearInterval(ivId);
+ ivId = setInterval(sendIdent, 2000);
+ sendP();sendIdent();
+ if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}
+};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
+
+function sendP(){
+ if(mode!='s')return;
+ if(pchStatus === 'SUBSCRIBED'){
+   room.broadcast({ id: myPeerId, x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +Pz.toFixed(2), a: +P.f.toFixed(2) });
+ }
+}
+function sendIdent(){
+ if(mode!='s')return;
+ const at = cc ? +(sT / cc).toFixed(1) : 0;
+ room.presence({t:'s', n:nm, v:av, s:sc, c:cc, wg:wc, at:at});
+}
 
 const km={ArrowUp:'f',w:'f',ArrowDown:'b',s:'b',ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r'};
 function jump(){if(mode!='s'||open||cl)return;if(Pz<=gh(P.x,P.y)+.06)vy=7.5}
@@ -417,9 +434,12 @@ $('#bk').onclick=()=>{
  if(mode=='s'&&nm){
   sb.from('player_stats').insert({name:nm,avatar_index:av,score:sc,correct:cc,wrong:wc,avg_time:cc?sT/cc:0}).then(()=>{}).catch(()=>{});
  }
- bch.send({ type: 'broadcast', event: 'leave', payload: { id: myPeerId } }).catch(()=>{});
- mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';show('home')};
-$('#bt').onclick=()=>{mode='';$('#gm').textContent='';bch.send({ type: 'broadcast', event: 'leave', payload: { id: myPeerId } }).catch(()=>{});show('home')};
+ if(ivPos)clearInterval(ivPos);
+ if(ivId)clearInterval(ivId);
+ mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';
+ for(const id in TP){SC.remove(TP[id].G); delete TP[id];}
+ room.presence({t:'x'});show('home')};
+$('#bt').onclick=()=>{mode='';$('#gm').textContent='';room.presence({t:'x'});show('home')};
 const touch=matchMedia('(pointer:coarse)').matches;
 const cvs=$('#cv');cvs.style.touchAction='none';let T0=null;function rs(){if(!R3)return;R3.setSize(innerWidth,innerHeight,false);CM.aspect=innerWidth/innerHeight;CM.updateProjectionMatrix()}addEventListener('resize',()=>{if(mode=='s')rs()});
 cvs.onpointerdown=e=>{if(mode=='s'&&e.pointerType=='mouse')dig()};
@@ -435,6 +455,7 @@ let JX=0,JY=0,mvg=0,cpv=0;
 })();
 $('#db').onpointerdown=e=>{e.preventDefault();dig()};
 let last=0,run=false;
+
 function loop(t){if(mode!='s'){run=false;return}
  const dt=Math.min(.05,(t-last)/1000);last=t;mvg=0;
  if(!open){
@@ -451,14 +472,35 @@ function loop(t){if(mode!='s'){run=false;return}
  $('#hint').textContent=lk()?(nearT?'🔒 Salah 2x! Tekan tombol sekop / E untuk memanjat dan baca materi':'🔒 Salah 2x! Cari pohon kelapa (cincin emas) dan baca materinya'):near?(touch?'Harta karun dekat! Tekan tombol sekop untuk menggali':'Harta karun di dekatmu! Tekan E / klik untuk menggali'):nearT?(touch?'Pohon kelapa! Tekan tombol untuk memanjat':'Pohon kelapa! Tekan E / klik untuk memanjat dan baca materi'):'Cari titik emas berkilau (puncak bukit: lompat naik tiap tingkat!)';
  {const rd=!!(near&&!lk())||!!nearT;$('#db').classList.toggle('rd',rd);$('#dl').textContent=(!near||lk())&&nearT?'PANJAT':'GALI'}
  
- // BROADCAST STATE KE GURU (10 kali per detik)
- if(bchReady && t-lastBroadcast > 100){
-   lastBroadcast = t;
-   const at = cc ? +(sT / cc).toFixed(1) : 0;
-   bch.send({ type: 'broadcast', event: 'state', payload: {
-     id: myPeerId, n: nm, v: av, s: sc, c: cc, wg: wc, at: at,
-     x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +Pz.toFixed(2), a: +P.f.toFixed(2)
-   }}).catch(() => {});
+ // Render other students in student view
+ const ids = new Set();
+ for (const p of peers) {
+   if (p.peer === myPeerId) continue;
+   const q = p.presence;
+   ids.add(p.peer);
+   let e = TP[p.peer];
+   if (!e || e.v != q.v) {
+     if (e) SC.remove(e.G);
+     const G = buildAv(q.v || 0), L = mkLab();
+     G.position.set(q.x||0, q.z||0, q.y||0);
+     G.add(L.sp);
+     SC.add(G);
+     e = TP[p.peer] = { G, v: q.v, L, w: 0, k: '' };
+   }
+   const G = e.G;
+   const f = Math.min(1, dt*10);
+   const tx = q.x !== undefined && !isNaN(q.x) ? q.x : G.position.x;
+   const ty = q.z !== undefined && !isNaN(q.z) ? q.z : G.position.y;
+   const tz = q.y !== undefined && !isNaN(q.y) ? q.y : G.position.z;
+   const dx=(tx-G.position.x),dy=(ty-G.position.y),dz=(tz-G.position.z);
+   const mv=Math.hypot(dx,dz)>.03?1:0;
+   G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
+   e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(q.a||0);
+   const k=q.n+'|'+q.s;
+   if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,false)}
+ }
+ for (const id in TP) {
+   if (!ids.has(id) || id === myPeerId) { SC.remove(TP[id].G); delete TP[id]; }
  }
  
  draw3();requestAnimationFrame(loop)
@@ -483,6 +525,7 @@ function ask(s){if(mode!='s'){open=false;return}const t0=performance.now(),q=Q[(
    m.append(r,c);
    if(ok){found[s.i]=1;sc+=bs+bn;cc++;sT+=el;wr=0}else{AT[s.i]=at+1;sc=Math.max(0,sc-5);wr++;wc++}
    $('#sc').textContent=sc+' poin';
+   sendIdent();
   };
   m.append(b);
  });
@@ -515,16 +558,35 @@ function tm(){
   
   const top=Math.max(0,...Object.values(RC).map(r=>r.s||0));
   
-  for(const id in TP){
-   const e=TP[id],G=e.G,tp=RC[id]&&RC[id].s>0&&RC[id].s===top;
-   const f=Math.min(1,dt*10);
-   const dx=(e.px-G.position.x),dy=(e.py-G.position.y),dz=(e.pz-G.position.z);
-   const mv=Math.hypot(dx,dz)>.03?1:0;
-   G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
-   e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(e.pa||0);
-   e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
-   const k=(RC[id]?.n||'')+'|'+(RC[id]?.s||0)+'|'+tp;if(k!=e.k){e.k=k;labDraw(e.L,RC[id]?.n||'Siswa',RC[id]?.s||0,tp)}
+  for(const p of peers){
+    const q=p.presence,id=p.peer;ids.add(id);
+    let e=TP[id];
+    if(!e||e.v!=q.v){
+      if(e)SC.remove(e.G);
+      const G=buildAv(q.v||0),L=mkLab();
+      G.position.set(q.x||0, q.z||0, q.y||0);
+      G.add(L.sp);
+      G.scale.setScalar(2);
+      SC.add(G);
+      e=TP[id]={G,v:q.v,L,sc:2,w:0,k:''};
+    }
+    const G=e.G,tp=q.s>0&&q.s==top;
+    const f=Math.min(1,dt*10);
+    const tx = q.x !== undefined && !isNaN(q.x) ? q.x : G.position.x;
+    const ty = q.z !== undefined && !isNaN(q.z) ? q.z : G.position.y;
+    const tz = q.y !== undefined && !isNaN(q.y) ? q.y : G.position.z;
+    
+    const dx=(tx-G.position.x),dy=(ty-G.position.y),dz=(tz-G.position.z);
+    const mv=Math.hypot(dx,dz)>.03?1:0;
+    G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
+    
+    e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(q.a||0);
+    e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
+    
+    const k=q.n+'|'+q.s+'|'+tp;
+    if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,tp)}
   }
+  for(const id in TP)if(!ids.has(id)){SC.remove(TP[id].G);delete TP[id]}
   
   const d=110/Z;CT.position.set(36+Math.sin(az)*Math.cos(el)*d,Math.sin(el)*d,36+Math.cos(az)*Math.cos(el)*d);CT.lookAt(36,0,36);
   dl.position.set(62,70,52);dl.target.position.set(36,0,36);SC.fog=tfog;R4.render(SC,CT);
@@ -545,7 +607,7 @@ $('#xl').onclick=()=>{
 };
 function stt(){
  const a=Object.values(RC),c=a.reduce((x,r)=>x+r.c,0),w=a.reduce((x,r)=>x+(r.wg||0),0),n=a.length;
- const status = bchReady ? 'Online' : 'Offline';
+ const status = pchStatus ? 'Online' : 'Offline';
  $('#st').textContent=`[${status}] 👥 ${n} online · rata-rata ${n?Math.round(a.reduce((x,r)=>x+r.s,0)/n):0} poin · akurasi ${c+w?Math.round(c*100/(c+w)):0}% (${c} benar, ${w} salah)`;
 }
 function lb(){stt();
