@@ -158,65 +158,21 @@ db = {
 };
 usr = { canEdit: () => true };
 
-let pch = null, presenceReady = false, pendingPresence = null;
+let pch = null;
 room = {
   onPeers: (cb) => {
-    if (pch) sb.removeChannel(pch).catch(() => {});
-    presenceReady = false;
     pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
-
-    const emitPeers = () => {
-      if (!pch) return;
+    pch.on('presence', { event: 'sync' }, () => {
       const state = pch.presenceState();
-      const list = [];
-      for (const key in state) {
-        for (const p of state[key]) list.push({ peer: key, presence: p });
-      }
-      cb({ peers: list });
-    };
-
-    pch.on('presence', { event: 'sync' }, emitPeers)
-       .on('presence', { event: 'join' }, emitPeers)
-       .on('presence', { event: 'leave' }, emitPeers)
-       .subscribe(status => {
-         console.info('[MEGABOND] game-room:', status);
-         if (status === 'SUBSCRIBED') {
-           presenceReady = true;
-           if (pendingPresence) {
-             pch.track(pendingPresence)
-               .then(emitPeers)
-               .catch(e => console.warn('[MEGABOND] track gagal:', e));
-           }
-           emitPeers();
-         } else if (
-           status === 'CHANNEL_ERROR' ||
-           status === 'TIMED_OUT' ||
-           status === 'CLOSED'
-         ) {
-           presenceReady = false;
-         }
-       });
+      const peers = [];
+      for (const key in state) for (const p of state[key]) peers.push({ peer: key, presence: p });
+      cb({ peers });
+    }).subscribe();
   },
-
   presence: (obj) => {
     if (!pch) return;
-
-    if (obj.t === 'x') {
-      pendingPresence = null;
-      if (presenceReady) {
-        pch.untrack().catch(e =>
-          console.warn('[MEGABOND] untrack gagal:', e)
-        );
-      }
-      return;
-    }
-
-    pendingPresence = obj;
-    if (presenceReady) {
-      pch.track(obj).catch(e =>
-        console.warn('[MEGABOND] track gagal:', e)
-      );
-    }
+    if (obj.t === 'x') { pch.untrack().catch(() => {}); return; }
+    pch.track(obj).catch(() => {});
   }
 };
 
@@ -394,26 +350,7 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{
-  nm=$('#nm').value.trim()||'Siswa';
-  mode='s';
-  show('game');
-  if(!initW()){
-    mode='';
-    show('home');
-    return;
-  }
-  sh(24,100);
-  rs();
-  fsOn();
-  sendP(); // kirim data awal; akan diantrikan sampai Presence siap
-  if(!run){
-    run=true;
-    last=performance.now();
-    requestAnimationFrame(loop);
-  }
-  iv=iv||setInterval(sendP,300);
-};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300)};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 function sendP(){if(mode=='s')room.presence({t:'s',n:nm,x:+P.x.toFixed(2),y:+P.y.toFixed(2),a:+P.f.toFixed(2),z:+Pz.toFixed(2),wg:wc,s:sc,v:av,c:cc,at:cc?+(sT/cc).toFixed(1):0})}
@@ -536,34 +473,11 @@ $('#xl').onclick=()=>{
  catch(e){flash('Gagal mengunduh: '+(e.message||e))}
 };
 function stt(){const a=Object.values(RC),c=a.reduce((x,r)=>x+r.c,0),w=a.reduce((x,r)=>x+(r.wg||0),0),n=a.filter(r=>r.on).length;$('#st').textContent=`👥 ${n} online · ${a.length} total · rata-rata ${a.length?Math.round(a.reduce((x,r)=>x+r.s,0)/a.length):0} poin · akurasi ${c+w?Math.round(c*100/(c+w)):0}% (${c} benar, ${w} salah)`}
-function lb(){
-  stt();
-  const o=$('#lb');
-  o.innerHTML='';
-
-  const rows=Object.values(RC).sort((a,b)=>
-    (b.s||0)-(a.s||0) ||
-    (a.at||99)-(b.at||99)
-  );
-
-  rows.forEach((r,i)=>{
-    const l=document.createElement('li');
-    const avatar=AV[r.v] ? AV[r.v].n : 'Karakter';
-    l.textContent=
-      `${['🥇','🥈','🥉'][i]||(i+1)+'.'} `+
-      `${r.n||'Siswa'} (${avatar}) — ${r.s||0} poin · `+
-      `${r.c||0} benar · ${r.wg||0} salah`+
-      `${r.at?' · rata-rata '+Number(r.at).toFixed(1)+' dtk':''}`+
-      `${r.on?' · 🟢 online':' · ⚪ offline'}`;
-    l.style.borderColor=AV[r.v] ? AV[r.v].c : '#888';
-    o.append(l);
-  });
-
-  if(!rows.length){
-    const l=document.createElement('li');
-    l.textContent='Menunggu siswa bergabung…';
-    o.append(l);
-  }
+function lb(){stt();
+ const o=$('#lb');o.innerHTML='';
+ [...peers].sort((a,b)=>b.presence.s-a.presence.s||(a.presence.at||99)-(b.presence.at||99)).forEach((p,i)=>{
+  const l=document.createElement('li');l.textContent=`${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${p.presence.n} — ${p.presence.s} poin · ${p.presence.c||0} benar · ${p.presence.wg||0} salah${p.presence.at?' · rata-rata '+p.presence.at+' dtk':''}`;l.style.borderColor=AV[p.presence.v]?AV[p.presence.v].c:col(p.peer);o.append(l)});
+ if(!peers.length){const l=document.createElement('li');l.textContent='Menunggu siswa bergabung…';o.append(l)}
 }
 $('#sv').onclick=async()=>{
  const l=parse($('#ed').value);
