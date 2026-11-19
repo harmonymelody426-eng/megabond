@@ -663,20 +663,124 @@ $('#msv').onclick=async()=>{const l=parseMT($('#med').value);if(!l.length)return
 
 /* ===== MEGABOND: musik, AI, sertifikat, hapus data ===== */
 
-/* ----- Musik (taruh file mp3 satu folder dengan index.html) ----- */
-const TR={intro:'musicintro.mp3',farm:'musicfarming.mp3',beast:'musicbeast.mp3',win:'musicwinner.mp3'},AU={};let muted=false,curT=null;
-try{muted=localStorage.getItem('mb_mute')=='1'}catch(e){}
-$('#mu').textContent=muted?'🔇':'🔊';
-const au=n=>AU[n]||(AU[n]=Object.assign(new Audio(TR[n]),{loop:n!=='win',preload:'auto',volume:.45}));
-function musicSync(){
- const want=mode=='s'?(gameOver?'win':(hunter||hSt.hs>0)?'beast':'farm'):mode=='g'?null:'intro';
- if(want!==curT){if(curT)au(curT).pause();curT=want;if(want)au(want).currentTime=0}
- if(!curT)return;const a=au(curT);
- if(muted)a.pause();else if(a.paused&&!a.ended)a.play().catch(()=>{});
+
+/* ----- Musik (taruh semua file mp3 satu folder dengan index.html) ----- */
+
+const TR = {
+ intro: 'musicintro.mp3',
+ farm: 'musicfarming.mp3',
+ beast: 'musicbeast.mp3',
+ timeout: 'musictimeout.mp3',
+ win: 'musicwinner.mp3'
+}, AU = {};
+
+let muted = false, curT = null;
+
+try {
+ muted = localStorage.getItem('mb_mute') == '1';
+} catch(e) {}
+
+$('#mu').textContent = muted ? '🔇' : '🔊';
+
+const au = n => AU[n] || (AU[n] = Object.assign(
+ new Audio(TR[n]),
+ {
+  loop: n !== 'win',
+  preload: 'auto',
+  volume: .45
+ }
+));
+
+// Sound effect tertawa Beast
+const evilLaugh = Object.assign(
+ new Audio('evillaugh.mp3'),
+ {
+  loop: true,
+  preload: 'auto',
+  volume: .65
+ }
+);
+
+function musicSync() {
+
+ const waitingBeast =
+  mode == 's' &&
+  !gameOver &&
+  !hunter &&
+  !caught &&
+  SP.every(p => found[p.i]);
+
+ const want = mode == 's'
+  ? (
+     gameOver ? 'win' :
+     (hunter || hSt.hs > 0) ? 'beast' :
+     waitingBeast ? 'timeout' :
+     'farm'
+    )
+  : mode == 'g' ? null : 'intro';
+
+ if (want !== curT) {
+  if (curT) au(curT).pause();
+
+  curT = want;
+
+  if (want) au(want).currentTime = 0;
+ }
+
+ if (!curT) return;
+
+ const a = au(curT);
+
+ if (muted) {
+  a.pause();
+ } else if (a.paused && !a.ended) {
+  a.play().catch(() => {});
+ }
 }
-function musicOn(){musicSync()}
-$('#mu').onclick=()=>{muted=!muted;try{localStorage.setItem('mb_mute',muted?'1':'0')}catch(e){}$('#mu').textContent=muted?'🔇':'🔊';musicSync()};
-setInterval(musicSync,500);['pointerdown','keydown'].forEach(ev=>addEventListener(ev,musicSync));
+
+// Sound effect Beast
+function beastSoundSync() {
+
+ if (muted || mode != 's' || !hunter || gameOver) {
+  evilLaugh.pause();
+  evilLaugh.currentTime = 0;
+  return;
+ }
+
+ if (evilLaugh.paused) {
+  evilLaugh.play().catch(() => {});
+ }
+}
+
+function musicOn() {
+ musicSync();
+ beastSoundSync();
+}
+
+// Tombol mute
+$('#mu').onclick = () => {
+
+ muted = !muted;
+
+ try {
+  localStorage.setItem('mb_mute', muted ? '1' : '0');
+ } catch(e) {}
+
+ $('#mu').textContent = muted ? '🔇' : '🔊';
+
+ musicOn();
+};
+
+// Sinkronisasi audio
+setInterval(() => {
+ musicSync();
+ beastSoundSync();
+}, 500);
+
+['pointerdown', 'keydown'].forEach(ev => {
+ addEventListener(ev, musicOn)
+});
+
 
 /* ----- AI pembuat soal & materi ----- */
 const AIK='mb_aikey',aiKey=()=>{try{return localStorage.getItem(AIK)||''}catch(e){return ''}};
