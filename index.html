@@ -746,7 +746,7 @@ async function drawCert(cv,name,score,hun){
  g.shadowColor='rgba(80,40,0,.35)';g.shadowBlur=6;g.shadowOffsetY=4;g.fillText('SERTIFIKAT',CW/2,310);g.shadowColor='transparent';g.shadowBlur=0;g.shadowOffsetY=0;
  g.fillStyle='#7a4a12';g.font='bold 48px '+F;sp('KEMENANGAN',CW/2,382,14);
  g.strokeStyle='#c28a1c';g.lineWidth=3;g.beginPath();g.moveTo(300,366);g.lineTo(520,366);g.moveTo(CW-300,366);g.lineTo(CW-520,366);g.stroke();
- const role=hun?'SANG BEAST':'PENJELAJAH TANGGUH';g.font='bold 30px '+F;
+ const role=hun?'SANG RAJA PETUALANG':'PENJELAJAH TANGGUH';g.font='bold 30px '+F;
  let rtw=0;for(const ch of role)rtw+=g.measureText(ch).width+3;const rw=Math.max(380,rtw+120),by=424,bh=58,bx=CW/2-rw/2;
  g.fillStyle='#7a141b';
  g.beginPath();g.moveTo(bx-70,by+10);g.lineTo(bx+20,by+10);g.lineTo(bx+20,by+bh+10);g.lineTo(bx-70,by+bh+10);g.lineTo(bx-45,by+bh/2+10);g.closePath();g.fill();
