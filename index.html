@@ -129,11 +129,10 @@ let Q=[
  {q:"Alat apa yang dipakai arkeolog untuk membersihkan benda rapuh?",o:["Kuas halus","Palu godam","Cangkul besar","Gergaji"],a:0},
  {q:"Ilmu yang mempelajari peninggalan manusia masa lalu disebut…",o:["Geologi","Arkeologi","Astronomi","Biologi"],a:1},
  {q:"Hasil galian yang disebut artefak adalah benda…",o:["Buatan manusia","Alami saja","Berupa awan","Berupa cuaca"],a:0}];
-let db,usr,mode='',P={x:6,y:6,a:.8,f:.8},sc=0,nm='',found={},K={},near=null,nearT=null,open=false,Z=1,px=0,py=0,tmOn=false;
-const RC={},TP={};
-let cl=null,readM={},wr=0,cc=0,sT=0,wc=0,AT={},SQ={},Pz=0,vy=0,dg=null,cb=0;const lk=()=>wr>=2&&MT.length>0;
+let room,db,usr,mode='',P={x:6,y:6,a:.8,f:.8},sc=0,nm='',found={},K={},near=null,nearT=null,open=false,peers=[],Z=1,px=0,py=0,tmOn=false;
 
 /* ===== Wrapper Supabase ===== */
+const myPeerId = makeId();
 db = {
   doc: (path) => {
     const key = path.replace('cfg/', '');
@@ -159,58 +158,35 @@ db = {
 };
 usr = { canEdit: () => true };
 
-/* ============================================================
-   KOMUNIKASI REALTIME (PRESENCE + BROADCAST)
-   ============================================================ */
-const myPeerId = makeId();
-let pch = null, pchStatus = '', lastPresence = null;
-let peers = [];
-
+let pch = null, presenceReady = false, pendingPresence = null;
 room = {
   onPeers: (cb) => {
     pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
-    
-    const emit = () => {
-      if (!pch) return;
+    pch.on('presence', { event: 'sync' }, () => {
       const state = pch.presenceState();
-      const p = [];
-      for (const key in state) for (const pres of state[key]) p.push({ peer: key, presence: pres });
-      cb({ peers: p });
-    };
-
-    pch
-      .on('presence', { event: 'sync' }, emit)
-      .on('presence', { event: 'join' }, emit)
-      .on('presence', { event: 'leave' }, emit)
-      .on('broadcast', { event: 'pos' }, ({ payload }) => {
-        // Update posisi langsung di memori lokal
-        for (const p of peers) {
-          if (p.peer === payload.id) {
-            p.presence.x = payload.x;
-            p.presence.y = payload.y;
-            p.presence.z = payload.z;
-            p.presence.a = payload.a;
-          }
-        }
-      })
-      .subscribe((status) => {
-        pchStatus = status;
-        if (status === 'SUBSCRIBED' && lastPresence && lastPresence.t !== 'x') {
-          pch.track(lastPresence).catch(() => {});
-          setTimeout(emit, 100);
-        }
-      });
+      const list = [];
+      for (const key in state) for (const p of state[key]) list.push({ peer: key, presence: p });
+      cb({ peers: list });
+    });
+    pch.subscribe((status, error) => {
+      if (status === 'SUBSCRIBED') {
+        presenceReady = true;
+        if (pendingPresence) pch.track(pendingPresence).catch(e => console.warn('Presence track gagal:', e));
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        presenceReady = false;
+        console.warn('Koneksi multiplayer:', status, error || '');
+      }
+    });
   },
   presence: (obj) => {
-    lastPresence = obj;
     if (!pch) return;
-    if (obj.t === 'x') { pch.untrack().catch(() => {}); return; }
-    if (pchStatus !== 'SUBSCRIBED') return;
-    pch.track(obj).catch(() => {});
-  },
-  broadcast: (payload) => {
-    if (pchStatus !== 'SUBSCRIBED') return;
-    pch.send({ type: 'broadcast', event: 'pos', payload }).catch(() => {});
+    if (obj.t === 'x') {
+      pendingPresence = null;
+      if (presenceReady) pch.untrack().catch(e => console.warn('Presence untrack gagal:', e));
+      return;
+    }
+    pendingPresence = obj;
+    if (presenceReady) pch.track(obj).catch(e => console.warn('Presence track gagal:', e));
   }
 };
 
@@ -226,23 +202,13 @@ const toMT=l=>l.map(m=>m.t+'\n'+m.b).join('\n---\n');
 const parseMT=t=>t.split(/^\s*---\s*$/m).map(x=>x.trim()).filter(Boolean).slice(0,8).map(x=>{const i=x.indexOf('\n');return{t:(i<0?x:x.slice(0,i)).trim().slice(0,60),b:i<0?'':x.slice(i+1).trim().slice(0,1500)}});
 const mm=t=>$('#mmsg').textContent=t;
 $('#med').value=toMT(MT);
+const RC={};let cl=null,readM={},wr=0,cc=0,sT=0,wc=0,AT={},SQ={},Pz=0,vy=0,dg=null,cb=0;const lk=()=>wr>=2&&MT.length>0;
 
-/* Listener awal DB */
+/* Listener awal */
 if(usr.canEdit())$('#bg').hidden=false;
 db.doc('cfg/materi').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)){MT=s.data().list;$('#med').value=toMT(MT);if(R3)signs()}},()=>{});
 db.doc('cfg/questions').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)&&s.data().list.length){Q=s.data().list;$('#ed').value=toLines(Q)}},()=>{});
-
-/* Sinkronisasi Leaderboard dengan Presence */
-room.onPeers(c=>{
-  peers=c.peers.filter(p=>p.presence&&p.presence.t==='s');
-  const on=new Set(peers.map(p=>p.peer));
-  for(const k in RC)if(!on.has(k))RC[k].on=0;
-  peers.forEach(p=>{
-    const q=p.presence;
-    RC[p.peer]={n:q.n,v:q.v,s:q.s,c:q.c||0,wg:q.wg||0,at:q.at||0,on:1}
-  });
-  if(mode=='g') lb();
-},()=>{});
+room.onPeers(c=>{peers=c.peers.filter(p=>p.presence&&p.presence.t==='s');const on=new Set(peers.map(p=>p.peer));for(const k in RC)if(!on.has(k))RC[k].on=0;peers.forEach(p=>{const q=p.presence;RC[p.peer]={n:q.n,v:q.v,s:q.s,c:q.c||0,wg:q.wg||0,at:q.at||0,on:1}});lb()},()=>{});
 
 /* ---------- Avatar ---------- */
 const AV=[
@@ -285,7 +251,6 @@ function buildAv(id){
  const arms=[-1,1].map(d=>{const a=lim(d*.33,1.0,.34,.075,shirt,mesh(SG,skin,0,-.37,0,.08,.08,.08));a.rotation.z=d*.12;body.add(a);return a});
  const sv=new THREE.Group();sv.add(mesh(CG,M('#8a5a2b'),0,-.45,0,.025,.9,.025),mesh(BG,M('#aab2b8',{metalness:.6}),0,-.95,0,.12,.2,.03));sv.position.y=-.37;sv.visible=false;arms[1].add(sv);G.userData={body,legs,arms,head,sv};return G}
 function animAv(G,w,mv,t){const u=G.userData;u.legs[0].rotation.x=Math.sin(w)*.7*mv;u.legs[1].rotation.x=-Math.sin(w)*.7*mv;u.arms[0].rotation.x=-Math.sin(w)*.6*mv;u.arms[1].rotation.x=Math.sin(w)*.6*mv;u.body.position.y=Math.abs(Math.sin(w))*.05*mv+Math.sin(t*2)*.01;u.head.rotation.y=Math.sin(t*.8)*.08*(1-mv)}
-
 function world(){
  const gm=M('#5aa845',{roughness:1}),g=mesh(new THREE.PlaneGeometry(220,220),gm,24,0,24,1,1,1);g.rotation.x=-Math.PI/2;g.receiveShadow=true;g.castShadow=false;SC.add(g);
  const w=mesh(CG,M('#e9cf86'),POND[0],.01,POND[1],POND[2]+1,.02,POND[2]+1),wa=mesh(CG,new THREE.MeshStandardMaterial({color:'#2f9ad0',roughness:.08,metalness:.3}),POND[0],.04,POND[1],POND[2],.04,POND[2]);SC.add(w,wa);
@@ -301,7 +266,7 @@ function world(){
    else{const gp=GP[(o.x*5|0)%3];
     G.add(mesh(new THREE.CylinderGeometry(.55,1,1,8),bark,0,.95*s,0,.17*s,1.9*s,.17*s));
     for(const d of[-1,1]){const b=mesh(new THREE.CylinderGeometry(.5,1,1,6),bark,d*.28*s,1.85*s,0,.07*s,.9*s,.07*s);b.rotation.z=-d*.7;G.add(b)}
-    [[0,2.7,0,1,1],[-.75,2.25,.2,.75,0],[.75,2.35,-.1,.8,1],[.1,2.2,.75,.7,0],[-.15,2.4,-.75,.7,1],[0,3.3,.05,.7,2],[.5,3.0,.4,.55,2]].forEach(([x,y,z,r,c],i)=>G.add(lf(gp[c],x*s,y*s,z*s,r*s,sd+i*3)))}} 
+    [[0,2.7,0,1,1],[-.75,2.25,.2,.75,0],[.75,2.35,-.1,.8,1],[.1,2.2,.75,.7,0],[-.15,2.4,-.75,.7,1],[0,3.3,.05,.7,2],[.5,3.0,.4,.55,2]].forEach(([x,y,z,r,c],i)=>G.add(lf(gp[c],x*s,y*s,z*s,r*s,sd+i*3)))}}
   else if(o.k=='palm'){
    for(let i=0;i<6;i++){const t=(i+.5)/6,m=mesh(new THREE.CylinderGeometry(.75,1,1,8),bark,.55*s*t*t,(i+.5)*.47*s,0,.13*s*(1-.4*t),.49*s,.13*s*(1-.4*t));m.rotation.z=-.22*t*1.6;G.add(m)}
    const tx=.5*s,ty=2.85*s;
@@ -346,7 +311,7 @@ function world(){
  for(let i=0;i<14;i++){const an=i/14*2*PI;SC.add(mesh(jg(new THREE.DodecahedronGeometry(1,0),.2,i),rm,gx+Math.cos(an)*4.7,.25,cz+2.1+Math.sin(an)*3.4,.35+R9()*.2,.28,.35+R9()*.2))}
  for(let i=0;i<5;i++)SC.add(mesh(SG,new THREE.MeshBasicMaterial({color:'#fff',transparent:true,opacity:.7}),gx-1.2+i*.6,.25,cz+.7,.3,.2,.3));
 
- const FN={M:'X...X/XX.XX/X.X.X/X...X/X...X/X...X/X...X',E:'XXXXX/X..../X..../XXXX./X..../X..../X..../XXXXX',G:'.XXXX/X..../X..../X.XXX/X...X/X...X/.XXX.',A:'.XXX./X...X/X...X/XXXXX/X...X/X...X/X...X',B:'XXXX./X...X/X...X/XXXX./X...X/X...X/XXXX.',O:'.XXX./X...X/X...X/X...X/X...X/X...X/.XXX.',N:'X...X/XX..X/XX..X/X.X.X/X..XX/X..XX/X...X',D:'XXXX./X...X/X...X/X...X/X...X/X...X/XXXX.',V:'X...X/X...X/X...X/X...X/X...X/.X.X./..X..',T:'XXXXX/..X../..X../..X../..X../..X../..X..',U:'X...X/X...X/X...X/X...X/X...X/X...X/.XXX.',R:'XXXX./X...X/X...X/XXXX./X.X../X..X./X...X',I:'XXXXX/..X../..X../..X../..X../XXXXX','3':'XXXX./....X/....X/.XXX./....X/....X/XXXX.',W:'X...X/X...X/X...X/X.X.X/X.X.X/XX.XX/X...X',S:'.XXXX/X..../X..../.XXX./....X/....X/XXXX.'},cells=[];
+ const FN={M:'X...X/XX.XX/X.X.X/X...X/X...X/X...X/X...X',E:'XXXXX/X..../X..../XXXX./X..../X..../XXXXX',G:'.XXXX/X..../X..../X.XXX/X...X/X...X/.XXX.',A:'.XXX./X...X/X...X/XXXXX/X...X/X...X/X...X',B:'XXXX./X...X/X...X/XXXX./X...X/X...X/XXXX.',O:'.XXX./X...X/X...X/X...X/X...X/X...X/.XXX.',N:'X...X/XX..X/XX..X/X.X.X/X..XX/X..XX/X...X',D:'XXXX./X...X/X...X/X...X/X...X/X...X/XXXX.',V:'X...X/X...X/X...X/X...X/X...X/.X.X./..X..',T:'XXXXX/..X../..X../..X../..X../..X../..X..',U:'X...X/X...X/X...X/X...X/X...X/X...X/.XXX.',R:'XXXX./X...X/X...X/XXXX./X.X../X..X./X...X',I:'XXXXX/..X../..X../..X../..X../..X../XXXXX','3':'XXXX./....X/....X/.XXX./....X/....X/XXXX.',W:'X...X/X...X/X...X/X.X.X/X.X.X/XX.XX/X...X',S:'.XXXX/X..../X..../.XXX./....X/....X/XXXX.'},cells=[];
  const word=(t,c,cx,y0,z,dp)=>{const w=t.length*6-1;t.split('').forEach((ch,li)=>{const f=FN[ch];if(!f)return;f.split('/').forEach((row,ry)=>{for(let rx=0;rx<5;rx++)if(row[rx]=='X')cells.push([cx+(li*6+rx-(w-1)/2)*c,y0+(6-ry+.5)*c,z,c,dp])})})};
  const woodT=(c0,c1,sd)=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),r=rng(sd);g.fillStyle=c0;g.fillRect(0,0,128,128);for(let i=0;i<46;i++){g.strokeStyle=c1;g.globalAlpha=.25+r()*.4;g.lineWidth=1+r()*2;g.beginPath();const y=r()*128;g.moveTo(0,y);g.bezierCurveTo(40,y+(r()-.5)*10,90,y+(r()-.5)*10,128,y+(r()-.5)*6);g.stroke()}g.globalAlpha=1;const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t};
  const wL=woodT('#d9a867','#8a5a2b',3),wD=woodT('#6a4426','#2f1b0b',8),SZ=gz-8.9,BY=4.95,BW=12.8,BH=4.9;
@@ -373,8 +338,37 @@ function initW(){
   if(me)SC.remove(me);me=buildAv(av);SC.add(me);return true
  }catch(e){$('#gm').textContent='3D tidak bisa dijalankan di perangkat ini (WebGL).';return false}
 }
+const remoteAvatars = Object.create(null);
+function syncRemoteAvatars(t, dt){
+ const active = new Set();
+ for(const p of peers){
+  const q=p.presence||{}, id=p.peer;
+  if(!id || id===myPeerId || q.t!=='s' || !Number.isFinite(+q.x) || !Number.isFinite(+q.y))continue;
+  active.add(id);
+  let e=remoteAvatars[id];
+  const avatar=Math.max(0,Math.min(AV.length-1,Number(q.v)||0));
+  if(!e || e.v!==avatar){
+   if(e)SC.remove(e.G);
+   const G=buildAv(avatar);G.scale.setScalar(1);SC.add(G);
+   e=remoteAvatars[id]={G,v:avatar,w:0};
+   G.position.set(+q.x,+q.z||0,+q.y);
+  }
+  const G=e.G, dx=+q.x-G.position.x, dz=+q.y-G.position.z;
+  const moving=Math.hypot(dx,dz)>.035?1:0;
+  const f=Math.min(1,dt*10);
+  G.position.x+=dx*f;G.position.z+=dz*f;
+  G.position.y+=((Number(q.z)||0)-G.position.y)*f;
+  e.w+=dt*9*moving;
+  animAv(G,e.w,moving,t);
+  G.rotation.y=Math.PI/2-(Number(q.a)||0);
+ }
+ for(const id of Object.keys(remoteAvatars))if(!active.has(id)){
+  SC.remove(remoteAvatars[id].G);delete remoteAvatars[id];
+ }
+}
 function draw3(){
  if(WF)WF.offset.y=performance.now()/800;const t=performance.now()/1000,mv=mvg,fx=Math.cos(P.a),fz=Math.sin(P.a);
+ syncRemoteAvatars(t,Math.min(.1,1/60));
  const cy=cl?cl.y:0;animAv(me,wt,mv,t);me.position.set(P.x,Pz+cy,P.y);
  if(cl){const u=me.userData,sw=Math.sin(wt);u.arms[0].rotation.x=-2.6+sw*.5;u.arms[1].rotation.x=-2.6-sw*.5;u.legs[0].rotation.x=.4+sw*.5;u.legs[1].rotation.x=.4-sw*.5}
  for(const k of kel)if(k&&k.G.visible)k.G.userData.ring.scale.setScalar(1.15+Math.sin(t*3)*.08);
@@ -399,32 +393,10 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-let ivPos = null, ivId = null;
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();
- // Broadcast posisi 10x per detik
- if(ivPos)clearInterval(ivPos);
- ivPos = setInterval(sendP, 100);
- // Broadcast identitas 1x per 2 detik
- if(ivId)clearInterval(ivId);
- ivId = setInterval(sendIdent, 2000);
- sendP();sendIdent();
- if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}
-};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300)};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
-
-function sendP(){
- if(mode!='s')return;
- if(pchStatus === 'SUBSCRIBED'){
-   room.broadcast({ id: myPeerId, x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +Pz.toFixed(2), a: +P.f.toFixed(2) });
- }
-}
-function sendIdent(){
- if(mode!='s')return;
- const at = cc ? +(sT / cc).toFixed(1) : 0;
- room.presence({t:'s', n:nm, v:av, s:sc, c:cc, wg:wc, at:at});
-}
-
+function sendP(){if(mode=='s')room.presence({t:'s',n:nm,x:+P.x.toFixed(2),y:+P.y.toFixed(2),a:+P.f.toFixed(2),z:+Pz.toFixed(2),wg:wc,s:sc,v:av,c:cc,at:cc?+(sT/cc).toFixed(1):0})}
 const km={ArrowUp:'f',w:'f',ArrowDown:'b',s:'b',ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r'};
 function jump(){if(mode!='s'||open||cl)return;if(Pz<=gh(P.x,P.y)+.06)vy=7.5}
 onkeydown=e=>{if(mode!='s')return;if(km[e.key])K[km[e.key]]=1;if(e.key=='e')dig();if(e.key==' '){e.preventDefault();jump()}};
@@ -434,11 +406,7 @@ $('#bk').onclick=()=>{
  if(mode=='s'&&nm){
   sb.from('player_stats').insert({name:nm,avatar_index:av,score:sc,correct:cc,wrong:wc,avg_time:cc?sT/cc:0}).then(()=>{}).catch(()=>{});
  }
- if(ivPos)clearInterval(ivPos);
- if(ivId)clearInterval(ivId);
- mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';
- for(const id in TP){SC.remove(TP[id].G); delete TP[id];}
- room.presence({t:'x'});show('home')};
+ mode='';K={};T0=null;open=false;if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});try{screen.orientation.unlock()}catch(x){}$('#qm').hidden=true;sc=0;found={};AT={};SQ={};readM={};cl=null;wr=0;cc=0;sT=0;wc=0;Pz=0;vy=0;dg=null;P={x:6,y:6,a:.8,f:.8};JX=JY=0;mvg=0;cpv=0;if(window.jreset)jreset();$('#sc').textContent='0 poin';room.presence({t:'x'});show('home')};
 $('#bt').onclick=()=>{mode='';$('#gm').textContent='';room.presence({t:'x'});show('home')};
 const touch=matchMedia('(pointer:coarse)').matches;
 const cvs=$('#cv');cvs.style.touchAction='none';let T0=null;function rs(){if(!R3)return;R3.setSize(innerWidth,innerHeight,false);CM.aspect=innerWidth/innerHeight;CM.updateProjectionMatrix()}addEventListener('resize',()=>{if(mode=='s')rs()});
@@ -454,8 +422,7 @@ let JX=0,JY=0,mvg=0,cpv=0;
  cz.onpointerup=cz.onpointercancel=e=>{if(e.pointerId===cid)cid=null};
 })();
 $('#db').onpointerdown=e=>{e.preventDefault();dig()};
-let last=0,run=false;
-
+let last=0,run=false,iv=null;
 function loop(t){if(mode!='s'){run=false;return}
  const dt=Math.min(.05,(t-last)/1000);last=t;mvg=0;
  if(!open){
@@ -471,38 +438,6 @@ function loop(t){if(mode!='s'){run=false;return}
  nearT=open?null:OB.find(o=>o.k=='kelapa'&&o.i<MT.length&&Math.hypot(o.x-P.x,o.y-P.y)<o.r+1.3)||null;
  $('#hint').textContent=lk()?(nearT?'🔒 Salah 2x! Tekan tombol sekop / E untuk memanjat dan baca materi':'🔒 Salah 2x! Cari pohon kelapa (cincin emas) dan baca materinya'):near?(touch?'Harta karun dekat! Tekan tombol sekop untuk menggali':'Harta karun di dekatmu! Tekan E / klik untuk menggali'):nearT?(touch?'Pohon kelapa! Tekan tombol untuk memanjat':'Pohon kelapa! Tekan E / klik untuk memanjat dan baca materi'):'Cari titik emas berkilau (puncak bukit: lompat naik tiap tingkat!)';
  {const rd=!!(near&&!lk())||!!nearT;$('#db').classList.toggle('rd',rd);$('#dl').textContent=(!near||lk())&&nearT?'PANJAT':'GALI'}
- 
- // Render other students in student view
- const ids = new Set();
- for (const p of peers) {
-   if (p.peer === myPeerId) continue;
-   const q = p.presence;
-   ids.add(p.peer);
-   let e = TP[p.peer];
-   if (!e || e.v != q.v) {
-     if (e) SC.remove(e.G);
-     const G = buildAv(q.v || 0), L = mkLab();
-     G.position.set(q.x||0, q.z||0, q.y||0);
-     G.add(L.sp);
-     SC.add(G);
-     e = TP[p.peer] = { G, v: q.v, L, w: 0, k: '' };
-   }
-   const G = e.G;
-   const f = Math.min(1, dt*10);
-   const tx = q.x !== undefined && !isNaN(q.x) ? q.x : G.position.x;
-   const ty = q.z !== undefined && !isNaN(q.z) ? q.z : G.position.y;
-   const tz = q.y !== undefined && !isNaN(q.y) ? q.y : G.position.z;
-   const dx=(tx-G.position.x),dy=(ty-G.position.y),dz=(tz-G.position.z);
-   const mv=Math.hypot(dx,dz)>.03?1:0;
-   G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
-   e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(q.a||0);
-   const k=q.n+'|'+q.s;
-   if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,false)}
- }
- for (const id in TP) {
-   if (!ids.has(id) || id === myPeerId) { SC.remove(TP[id].G); delete TP[id]; }
- }
- 
  draw3();requestAnimationFrame(loop)
 }
 function climb(o){open=true;K={};const dx=o.x-P.x,dy=o.y-P.y,d=Math.hypot(dx,dy)||1;P.a=P.f=Math.atan2(dy,dx);P.x=o.x-dx/d*.42;P.y=o.y-dy/d*.42;cl={o,y:0,ph:'up'}}
@@ -525,7 +460,7 @@ function ask(s){if(mode!='s'){open=false;return}const t0=performance.now(),q=Q[(
    m.append(r,c);
    if(ok){found[s.i]=1;sc+=bs+bn;cc++;sT+=el;wr=0}else{AT[s.i]=at+1;sc=Math.max(0,sc-5);wr++;wc++}
    $('#sc').textContent=sc+' poin';
-   sendIdent();
+   sendP();
   };
   m.append(b);
  });
@@ -538,7 +473,7 @@ document.querySelectorAll('nav [data-t]').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x==b));
  $('#mon').hidden=b.dataset.t!='mon';$('#qs').hidden=b.dataset.t!='qs';$('#mt').hidden=b.dataset.t!='mt'});
 $('#zi').onclick=()=>Z=Math.min(6,Z*1.3);$('#zo').onclick=()=>Z=Math.max(.6,Z/1.3);
-const tc=$('#tc');let R4,CT,sfog,tfog,az=0,el=.85,tl=0;
+const tc=$('#tc');let R4,CT,sfog,tfog,az=0,el=.85,TP={},tl=0;
 const sh=(n,f)=>{const c=dl.shadow.camera;c.left=c.bottom=-n;c.right=c.top=n;c.far=f;c.updateProjectionMatrix()};
 function initT(){
  if(R4)return true;
@@ -555,39 +490,14 @@ function tm(){
  if(mode=='g'&&!$('#mon').hidden&&R4){
   const t=performance.now()/1000,dt=Math.min(.1,t-tl||.016);tl=t;if(WF)WF.offset.y=t*1.25;
   const w=tc.clientWidth,h=tc.clientHeight;if(w&&h&&(R4._w!=w||R4._h!=h)){R4.setSize(w,h,false);R4._w=w;R4._h=h;CT.aspect=w/h;CT.updateProjectionMatrix()}
-  
-  const top=Math.max(0,...Object.values(RC).map(r=>r.s||0));
-  
-  for(const p of peers){
-    const q=p.presence,id=p.peer;ids.add(id);
-    let e=TP[id];
-    if(!e||e.v!=q.v){
-      if(e)SC.remove(e.G);
-      const G=buildAv(q.v||0),L=mkLab();
-      G.position.set(q.x||0, q.z||0, q.y||0);
-      G.add(L.sp);
-      G.scale.setScalar(2);
-      SC.add(G);
-      e=TP[id]={G,v:q.v,L,sc:2,w:0,k:''};
-    }
-    const G=e.G,tp=q.s>0&&q.s==top;
-    const f=Math.min(1,dt*10);
-    const tx = q.x !== undefined && !isNaN(q.x) ? q.x : G.position.x;
-    const ty = q.z !== undefined && !isNaN(q.z) ? q.z : G.position.y;
-    const tz = q.y !== undefined && !isNaN(q.y) ? q.y : G.position.z;
-    
-    const dx=(tx-G.position.x),dy=(ty-G.position.y),dz=(tz-G.position.z);
-    const mv=Math.hypot(dx,dz)>.03?1:0;
-    G.position.x+=dx*f;G.position.y+=dy*f;G.position.z+=dz*f;
-    
-    e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(q.a||0);
-    e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
-    
-    const k=q.n+'|'+q.s+'|'+tp;
-    if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,tp)}
-  }
+  const top=Math.max(0,...peers.map(p=>p.presence.s||0)),ids=new Set();
+  for(const p of peers){const q=p.presence,id=p.peer;ids.add(id);let e=TP[id];
+   if(!e||e.v!=q.v){if(e)SC.remove(e.G);const G=buildAv(q.v||0),L=mkLab();G.position.set(q.x,0,q.y);G.add(L.sp);G.scale.setScalar(2);SC.add(G);e=TP[id]={G,v:q.v,L,sc:2,w:0,k:''}}
+   const G=e.G,tp=q.s>0&&q.s==top,dx=q.x-G.position.x,dz=q.y-G.position.z,f=Math.min(1,dt*8),mv=Math.hypot(dx,dz)>.03?1:0;
+   G.position.x+=dx*f;G.position.z+=dz*f;G.position.y+=((q.z||0)-G.position.y)*f;e.w+=dt*9*mv;animAv(G,e.w,mv,t);G.rotation.y=Math.PI/2-(q.a||0);
+   e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
+   const k=q.n+'|'+q.s+'|'+tp;if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,tp)}}
   for(const id in TP)if(!ids.has(id)){SC.remove(TP[id].G);delete TP[id]}
-  
   const d=110/Z;CT.position.set(36+Math.sin(az)*Math.cos(el)*d,Math.sin(el)*d,36+Math.cos(az)*Math.cos(el)*d);CT.lookAt(36,0,36);
   dl.position.set(62,70,52);dl.target.position.set(36,0,36);SC.fog=tfog;R4.render(SC,CT);
  }
@@ -605,18 +515,12 @@ $('#xl').onclick=()=>{
   flash('✅ Rekap siap diunduh')}
  catch(e){flash('Gagal mengunduh: '+(e.message||e))}
 };
-function stt(){
- const a=Object.values(RC),c=a.reduce((x,r)=>x+r.c,0),w=a.reduce((x,r)=>x+(r.wg||0),0),n=a.length;
- const status = pchStatus ? 'Online' : 'Offline';
- $('#st').textContent=`[${status}] 👥 ${n} online · rata-rata ${n?Math.round(a.reduce((x,r)=>x+r.s,0)/n):0} poin · akurasi ${c+w?Math.round(c*100/(c+w)):0}% (${c} benar, ${w} salah)`;
-}
+function stt(){const a=Object.values(RC),c=a.reduce((x,r)=>x+r.c,0),w=a.reduce((x,r)=>x+(r.wg||0),0),n=a.filter(r=>r.on).length;$('#st').textContent=`👥 ${n} online · ${a.length} total · rata-rata ${a.length?Math.round(a.reduce((x,r)=>x+r.s,0)/a.length):0} poin · akurasi ${c+w?Math.round(c*100/(c+w)):0}% (${c} benar, ${w} salah)`}
 function lb(){stt();
  const o=$('#lb');o.innerHTML='';
- const arr = Object.entries(RC).map(([id, r]) => ({ id, ...r }));
- arr.sort((a,b)=>b.s-a.s||(a.at||99)-(b.at||99));
- arr.forEach((r,i)=>{
-  const l=document.createElement('li');l.textContent=`${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${r.n} — ${r.s} poin · ${r.c||0} benar · ${r.wg||0} salah${r.at?' · rata-rata '+r.at+' dtk':''}`;l.style.borderColor=AV[r.v]?AV[r.v].c:col(r.id);o.append(l)});
- if(!arr.length){const l=document.createElement('li');l.textContent='Menunggu siswa bergabung…';o.append(l)}
+ [...peers].sort((a,b)=>b.presence.s-a.presence.s||(a.presence.at||99)-(b.presence.at||99)).forEach((p,i)=>{
+  const l=document.createElement('li');l.textContent=`${['🥇','🥈','🥉'][i]||(i+1)+'.'} ${p.presence.n} — ${p.presence.s} poin · ${p.presence.c||0} benar · ${p.presence.wg||0} salah${p.presence.at?' · rata-rata '+p.presence.at+' dtk':''}`;l.style.borderColor=AV[p.presence.v]?AV[p.presence.v].c:col(p.peer);o.append(l)});
+ if(!peers.length){const l=document.createElement('li');l.textContent='Menunggu siswa bergabung…';o.append(l)}
 }
 $('#sv').onclick=async()=>{
  const l=parse($('#ed').value);
