@@ -160,56 +160,45 @@ usr = { canEdit: () => true };
 
 let pch = null, presenceReady = false, pendingPresence = null;
 let roomStatus = 'CONNECTING', roomError = '', trackStatus = 'belum mengirim', syncCount = 0;
-function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount} · posisi diterima: ${posCount}${trackStatus?` · kirim: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
-let POS = Object.create(null), posCount = 0, lastSig = '', lastTrack = 0, lastPos = '', lastPosT = 0;
+function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount} · pesan diterima: ${posCount}${trackStatus?` · kirim: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
+let PL = Object.create(null), posCount = 0, lastPos = '', lastPosT = 0, emitCb = null;
+function emitPeers(){
+  const now = Date.now(), list = [];
+  for (const id in PL) { if (now - PL[id].seen > 8000) { delete PL[id]; continue; } list.push({ peer: id, presence: PL[id] }); }
+  syncCount = list.length;
+  if (emitCb) { try { emitCb({ peers: list }); } catch (e) { console.warn(e); } }
+  showNet();
+}
 room = {
   pos: (pl) => {
     if (!pch || !presenceReady) return;
-    pch.send({ type: 'broadcast', event: 'pos', payload: pl }).catch(() => {});
+    pch.send({ type: 'broadcast', event: 'pos', payload: pl }).then(v => { trackStatus = String(v || 'ok'); }).catch(e => { trackStatus = 'GAGAL'; roomError = e.message || String(e); });
   },
   onPeers: (cb) => {
-    pch = sb.channel('game-room', { config: { presence: { key: myPeerId }, broadcast: { self: false, ack: false } } });
-    pch.on('presence', { event: 'sync' }, () => {
-      const state = pch.presenceState();
-      const list = [];
-      for (const key in state) for (const p of state[key]) list.push({ peer: key, presence: Object.assign({}, p, POS[key] || {}) });
-      for (const k in POS) if (!state[k]) delete POS[k];
-      syncCount = list.length;
-      cb({ peers: list });
-      showNet();
-    });
+    emitCb = cb;
+    pch = sb.channel('game-room', { config: { broadcast: { self: false, ack: false } } });
     pch.on('broadcast', { event: 'pos' }, ({ payload }) => {
       if (!payload || !payload.id) return;
       posCount++;
-      const v = { x: payload.x, y: payload.y, a: payload.a, z: payload.z };
-      POS[payload.id] = v;
-      const e = peers.find(p => p.peer === payload.id);
-      if (e) Object.assign(e.presence, v);
+      if (payload.bye) { delete PL[payload.id]; emitPeers(); return; }
+      const isNew = !PL[payload.id];
+      PL[payload.id] = Object.assign(PL[payload.id] || {}, payload, { seen: Date.now() });
+      if (isNew) emitPeers();
     });
     pch.subscribe((status, error) => {
       roomStatus = status;
       roomError = error ? (error.message || String(error)) : '';
-      if (status === 'SUBSCRIBED') {
-        presenceReady = true;
-        if (pendingPresence) pch.track(pendingPresence).then(v=>{trackStatus=String(v||'ok');showNet()}).catch(e=>{trackStatus='GAGAL';roomError=e.message||String(e);showNet();console.warn('Presence track gagal:',e)});
-      } else {
-        presenceReady = false;
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('Koneksi multiplayer:', status, error || '');
-      }
+      presenceReady = (status === 'SUBSCRIBED');
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('Koneksi multiplayer:', status, error || '');
       showNet();
     });
+    setInterval(emitPeers, 500);
   },
   presence: (obj) => {
-    if (!pch) return;
-    if (obj.t === 'x') {
-      pendingPresence = null;
-      if (presenceReady) pch.untrack().catch(e => console.warn('Presence untrack gagal:', e));
+    if (obj && obj.t === 'x') {
+      if (pch && presenceReady) pch.send({ type: 'broadcast', event: 'pos', payload: { id: myPeerId, bye: 1 } }).catch(() => {});
       trackStatus = 'keluar'; showNet();
-      return;
     }
-    pendingPresence = obj;
-    if (presenceReady) pch.track(obj).then(v=>{trackStatus=String(v||'ok');roomError='';showNet()}).catch(e=>{trackStatus='GAGAL';roomError=e.message||String(e);showNet();console.warn('Presence track gagal:',e)});
-    else { trackStatus='menunggu SUBSCRIBED'; showNet(); }
   }
 };
 
@@ -421,10 +410,10 @@ function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.reques
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 function sendP(){
  if(mode!='s')return;
- const now=performance.now(),x=+P.x.toFixed(2),y=+P.y.toFixed(2),a=+P.f.toFixed(2),z=+Pz.toFixed(2),k=x+'|'+y+'|'+a+'|'+z;
- if(k!==lastPos||now-lastPosT>1000){lastPos=k;lastPosT=now;room.pos({id:myPeerId,x,y,a,z})}
- const sig=[nm,av,sc,cc,wc].join('|');
- if(sig!==lastSig||now-lastTrack>3000){lastSig=sig;lastTrack=now;room.presence({t:'s',n:nm,x,y,a,z,wg:wc,s:sc,v:av,c:cc,at:cc?+(sT/cc).toFixed(1):0})}
+ const now=performance.now(),x=+P.x.toFixed(2),y=+P.y.toFixed(2),a=+P.f.toFixed(2),z=+Pz.toFixed(2),k=[x,y,a,z,nm,av,sc,cc,wc].join('|');
+ if(k===lastPos&&now-lastPosT<1000)return;
+ lastPos=k;lastPosT=now;
+ room.pos({id:myPeerId,t:'s',n:nm,v:av,x,y,a,z,s:sc,c:cc,wg:wc,at:cc?+(sT/cc).toFixed(1):0});
 }
 const km={ArrowUp:'f',w:'f',ArrowDown:'b',s:'b',ArrowLeft:'l',a:'l',ArrowRight:'r',d:'r'};
 function jump(){if(mode!='s'||open||cl)return;if(Pz<=gh(P.x,P.y)+.06)vy=7.5}
