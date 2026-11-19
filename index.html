@@ -67,7 +67,7 @@ small{opacity:.7}#db,#jb{position:absolute;z-index:3;border-radius:50%;padding:0
 
 <div id="game" hidden>
  <canvas id="cv"></canvas>
- <div id="hud"><button id="bk" style="padding:6px 12px">← Keluar</button><button id="fs" style="padding:6px 12px">⛶</button><b id="sc">0 poin</b><span id="hint">Cari titik emas berkilau</span></div>
+ <div id="hud"><button id="bk" style="padding:6px 12px">← Keluar</button><button id="fs" style="padding:6px 12px">⛶</button><b id="sc">0 poin</b><span id="hint">Cari titik emas berkilau</span><small id="pnet" style="background:#172b18cc;padding:5px 7px;border-radius:6px;font-size:10px">Realtime: menyiapkan koneksi…</small></div>
  <div id="jz"><div id="jr"><div id="jk"></div></div></div><div id="cz"></div>
  <button id="jb"><span style="font-size:22px">⬆</span>Lompat</button>
  <button id="db" aria-label="Gali"><svg viewBox="0 0 64 64"><g transform="rotate(38 32 32)"><rect x="21" y="2" width="22" height="7" rx="3.5" fill="#6b4423"/><rect x="29.5" y="7" width="5" height="31" fill="#8a5a2b"/><path d="M19 36h26v10c0 8-6 14-13 17-7-3-13-9-13-17z" fill="#d4dbe1" stroke="#3a2a14" stroke-width="2.5" stroke-linejoin="round"/><path d="M32 41v17" stroke="#8b96a0" stroke-width="2.5" stroke-linecap="round"/><rect x="27" y="34" width="10" height="5" rx="2" fill="#5b3a1a"/></g></svg><span id="dl">GALI</span></button>
@@ -78,7 +78,7 @@ small{opacity:.7}#db,#jb{position:absolute;z-index:3;border-radius:50%;padding:0
 <div id="teach" hidden>
  <nav><button data-t="mon" class="on">Pantau</button><button data-t="qs">Soal</button><button data-t="mt">Materi</button><button id="bt">Keluar</button></nav>
  <section id="mon">
-  <div id="mapw"><canvas id="tc"></canvas><div id="lbp"><h3>🏆 Leaderboard</h3><div id="st"></div><ol id="lb"></ol><button id="xl">⬇ Unduh Rekap (Excel)</button></div><div id="zb"><button id="zi">＋</button><button id="zo">－</button></div></div>
+  <div id="mapw"><canvas id="tc"></canvas><div id="lbp"><h3>🏆 Leaderboard</h3><div id="st"></div><div id="net" style="background:#172b18;padding:6px 8px;border-radius:6px;font-size:11px;line-height:1.4">Realtime: menyiapkan koneksi…</div><ol id="lb"></ol><button id="xl">⬇ Unduh Rekap (Excel)</button></div><div id="zb"><button id="zi">＋</button><button id="zo">－</button></div></div>
  </section>
  <section id="qs" hidden>
   <small>Satu soal per baris: Pertanyaan | A | B | C | D | nomor jawaban benar (1-4)</small>
@@ -159,6 +159,8 @@ db = {
 usr = { canEdit: () => true };
 
 let pch = null, presenceReady = false, pendingPresence = null;
+let roomStatus = 'CONNECTING', roomError = '', trackStatus = 'belum mengirim', syncCount = 0;
+function showNet(){const msg=`Realtime: ${roomStatus} · data diterima: ${syncCount}${trackStatus?` · kirim: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
 room = {
   onPeers: (cb) => {
     pch = sb.channel('game-room', { config: { presence: { key: myPeerId } } });
@@ -166,16 +168,21 @@ room = {
       const state = pch.presenceState();
       const list = [];
       for (const key in state) for (const p of state[key]) list.push({ peer: key, presence: p });
+      syncCount = list.length;
       cb({ peers: list });
+      showNet();
     });
     pch.subscribe((status, error) => {
+      roomStatus = status;
+      roomError = error ? (error.message || String(error)) : '';
       if (status === 'SUBSCRIBED') {
         presenceReady = true;
-        if (pendingPresence) pch.track(pendingPresence).catch(e => console.warn('Presence track gagal:', e));
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (pendingPresence) pch.track(pendingPresence).then(v=>{trackStatus=String(v||'ok');showNet()}).catch(e=>{trackStatus='GAGAL';roomError=e.message||String(e);showNet();console.warn('Presence track gagal:',e)});
+      } else {
         presenceReady = false;
-        console.warn('Koneksi multiplayer:', status, error || '');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('Koneksi multiplayer:', status, error || '');
       }
+      showNet();
     });
   },
   presence: (obj) => {
@@ -183,10 +190,12 @@ room = {
     if (obj.t === 'x') {
       pendingPresence = null;
       if (presenceReady) pch.untrack().catch(e => console.warn('Presence untrack gagal:', e));
+      trackStatus = 'keluar'; showNet();
       return;
     }
     pendingPresence = obj;
-    if (presenceReady) pch.track(obj).catch(e => console.warn('Presence track gagal:', e));
+    if (presenceReady) pch.track(obj).then(v=>{trackStatus=String(v||'ok');roomError='';showNet()}).catch(e=>{trackStatus='GAGAL';roomError=e.message||String(e);showNet();console.warn('Presence track gagal:',e)});
+    else { trackStatus='menunggu SUBSCRIBED'; showNet(); }
   }
 };
 
@@ -393,7 +402,7 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}iv=iv||setInterval(sendP,300)};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}sendP();iv=iv||setInterval(sendP,300)};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 function sendP(){if(mode=='s')room.presence({t:'s',n:nm,x:+P.x.toFixed(2),y:+P.y.toFixed(2),a:+P.f.toFixed(2),z:+Pz.toFixed(2),wg:wc,s:sc,v:av,c:cc,at:cc?+(sT/cc).toFixed(1):0})}
