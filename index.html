@@ -739,9 +739,15 @@ function musicSync() {
 }
 
 // Sound effect Beast
+
 function beastSoundSync() {
 
- if (muted || mode != 's' || !hunter || gameOver) {
+ const beastActive =
+  mode == 's' &&
+  !gameOver &&
+  hSt.hs > 0;
+
+ if (muted || !beastActive) {
   evilLaugh.pause();
   evilLaugh.currentTime = 0;
   return;
@@ -752,10 +758,6 @@ function beastSoundSync() {
  }
 }
 
-function musicOn() {
- musicSync();
- beastSoundSync();
-}
 
 // Tombol mute
 $('#mu').onclick = () => {
