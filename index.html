@@ -122,10 +122,22 @@ details{background:#3a2a14;border-radius:10px;padding:8px 12px}summary{cursor:po
  </section>
  <section id="qs" hidden>
   <details id="aiq"><summary>✨ Buat soal dengan AI</summary><div class="ai"><input id="aiqt" placeholder="Topik soal (mis. Peninggalan sejarah Hindu-Buddha)"><div class="r"><input id="aiqj" placeholder="Jenjang (mis. MI kelas 5)"><input id="aiqn" type="number" min="1" max="20" value="5" style="max-width:90px"></div><input class="aikey" type="password" placeholder="API Key Claude (opsional, lebih stabil)" autocomplete="off"><button id="aiqb">✨ Buat Soal</button><small id="aiqm"></small></div></details>
-  <small>Satu soal per baris: Pertanyaan | A | B | C | D | nomor jawaban benar (1-4)</small>
-  <textarea id="ed"></textarea>
-  <button id="sv">Simpan soal</button>
-  <p id="msg"></p>
+  <div class="qbuilder">
+   <b>➕ Tambah soal</b>
+   <select id="qtype"><option value="mcq">Pilihan ganda</option><option value="multi">Pilihan ganda kompleks</option><option value="short">Isian singkat</option></select>
+   <textarea id="qtext" rows="3" placeholder="Tulis pertanyaan di sini…"></textarea>
+   <div id="qopts" class="qopts"></div>
+   <div id="qanswer" hidden><input id="qanswerinput" placeholder="Kunci jawaban singkat"></div>
+   <div class="qimage"><label for="qimage">🖼️ Gambar soal (opsional)</label><input id="qimage" type="file" accept="image/*"><img id="qpreview" hidden alt="Pratinjau gambar soal"></div>
+   <div class="qactions"><button id="qadd" type="button">Tambah soal</button><button id="qclear" type="button">Kosongkan</button></div>
+   <small>Untuk pilihan ganda, tandai satu jawaban benar. Untuk pilihan ganda kompleks, tandai semua jawaban yang benar.</small>
+   <b>Daftar soal: <span id="qcount">0</span></b><div id="qlist"></div>
+  </div>
+  <details><summary>Impor soal format lama (opsional)</summary>
+   <small>Satu soal per baris: Pertanyaan | A | B | C | D | nomor jawaban benar (1-4)</small>
+   <textarea id="ed" rows="5"></textarea><button id="qimport" type="button">Impor soal lama ke daftar</button>
+  </details>
+  <button id="sv">Simpan semua soal</button><p id="msg"></p>
  </section>
  <section id="mt" hidden>
   <details id="aim"><summary>✨ Buat materi dengan AI</summary><div class="ai"><input id="aimt" placeholder="Topik materi (mis. Alat-alat arkeolog)"><div class="r"><input id="aimj" placeholder="Jenjang (mis. MI kelas 5)"><input id="aimn" type="number" min="1" max="8" value="3" style="max-width:90px"></div><input class="aikey" type="password" placeholder="API Key Claude (opsional, lebih stabil)" autocomplete="off"><button id="aimb">✨ Buat Materi</button><small id="aimm"></small></div></details>
@@ -291,13 +303,13 @@ function renderQList(){
  const box=$('#qlist');box.innerHTML='';$('#qcount').textContent=Q.length;
  Q.forEach((q,i)=>{const row=document.createElement('div');row.className='qitem';const label=document.createElement('span');label.textContent=(i+1)+'. ['+({mcq:'PG',multi:'PG kompleks',short:'Isian'}[q.type||'mcq'])+'] '+q.q+(q.image?' 🖼️':'');const del=document.createElement('button');del.textContent='Hapus';del.style.padding='6px 10px';del.onclick=()=>{Q.splice(i,1);renderQList()};row.append(label,del);box.append(row)});
 }
-function clearQForm(){ $('#qtext').value='';$('#qanswer').value='';$('#qimage').value='';$('#qpreview').hidden=true;$('#qpreview').removeAttribute('src');qImageData='';$('#qopts').querySelectorAll('input').forEach(x=>x.value='');$('#qopts').querySelectorAll('[data-correct]').forEach(x=>x.checked=false); }
+function clearQForm(){ $('#qtext').value='';$('#qanswerinput').value='';$('#qimage').value='';$('#qpreview').hidden=true;$('#qpreview').removeAttribute('src');qImageData='';$('#qopts').querySelectorAll('input').forEach(x=>x.value='');$('#qopts').querySelectorAll('[data-correct]').forEach(x=>x.checked=false); }
 $('#qtype').onchange=qTypeUI;qTypeUI();renderQList();
 $('#qimage').onchange=()=>{const f=$('#qimage').files&&$('#qimage').files[0];if(!f)return;if(!f.type.startsWith('image/'))return msg('File harus berupa gambar.');if(f.size>8*1024*1024)return msg('Ukuran gambar maksimal 8 MB.');const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const scale=Math.min(1,1000/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*scale));c.height=Math.max(1,Math.round(im.height*scale));c.getContext('2d').drawImage(im,0,0,c.width,c.height);qImageData=c.toDataURL('image/jpeg',.76);$('#qpreview').src=qImageData;$('#qpreview').hidden=false;URL.revokeObjectURL(u)};im.onerror=()=>{URL.revokeObjectURL(u);msg('Gambar tidak dapat dibaca.')};im.src=u;};
 $('#qadd').onclick=()=>{
  const type=$('#qtype').value,q=$('#qtext').value.trim();if(!q)return msg('Tulis pertanyaan terlebih dahulu.');
  let item={type,q,image:qImageData||''};
- if(type==='short'){item.answer=$('#qanswer').value.trim();if(!item.answer)return msg('Isi kunci jawaban singkat.');}
+ if(type==='short'){item.answer=$('#qanswerinput').value.trim();if(!item.answer)return msg('Isi kunci jawaban singkat.');}
  else{const rows=[...$('#qopts').querySelectorAll('.qopt')],opts=rows.map(r=>r.querySelector('[data-option]').value.trim()),correct=rows.filter(r=>r.querySelector('[data-correct]').checked).map(r=>+r.querySelector('[data-correct]').dataset.correct);if(opts.some(x=>!x))return msg('Lengkapi semua pilihan jawaban.');if(!correct.length||type==='mcq'&&correct.length!==1)return msg(type==='mcq'?'Pilih tepat satu jawaban benar.':'Pilih minimal satu jawaban benar.');item.o=opts;if(type==='mcq')item.a=correct[0];else item.answers=correct;}
  Q.push(item);renderQList();clearQForm();msg('Soal ditambahkan. Klik Simpan semua soal untuk menyimpan ke database.');
 };
