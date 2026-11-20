@@ -218,7 +218,7 @@ function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount} ·
 let PL = Object.create(null), posCount = 0, lastPos = '', lastPosT = 0, emitCb = null;
 function emitPeers(){
   const now = Date.now(), list = [];
-  for (const id in PL) { if (now - PL[id].seen > 8000) { delete PL[id]; continue; } list.push({ peer: id, presence: PL[id] }); }
+  for (const id in PL) { if (now - PL[id].seen > 15000) { delete PL[id]; continue; } list.push({ peer: id, presence: PL[id] }); }
   syncCount = list.length;
   if (emitCb) { try { emitCb({ peers: list }); } catch (e) { console.warn(e); } }
   showNet();
@@ -517,13 +517,13 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}sendP();iv=iv||setInterval(sendP,100);musicOn()};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}sendP();iv=iv||setInterval(sendP,300);musicOn()};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 function sendP(){
  if(mode!='s')return;
  const now=performance.now(),x=+P.x.toFixed(2),y=+P.y.toFixed(2),a=+P.f.toFixed(2),z=+Pz.toFixed(2),k=[x,y,a,z,nm,av,sc,cc,wc,hunter,caught].join('|');
- if(k===lastPos&&now-lastPosT<1000)return;
+ if(k===lastPos&&now-lastPosT<2500)return;
  lastPos=k;lastPosT=now;
  room.pos({id:myPeerId,t:'s',n:nm,v:av,x,y,a,z,s:sc,c:cc,wg:wc,h:hunter?1:0,cg:caught?1:0,at:cc?+(sT/cc).toFixed(1):0});
 }
