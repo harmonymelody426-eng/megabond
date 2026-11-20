@@ -76,9 +76,6 @@ details{background:#3a2a14;border-radius:10px;padding:8px 12px}summary{cursor:po
 #endv p{margin:0;font-size:clamp(14px,2vw,18px)}
 #endc{max-width:100%;max-height:58vh;width:auto;height:auto;border-radius:6px;box-shadow:0 8px 30px #000a}
 #endb{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-.qbuilder{display:flex;flex-direction:column;gap:8px;padding:10px;background:#241a0d;border:1px solid #6b5128;border-radius:12px;overflow:auto;max-height:48vh}
-.qbuilder textarea,.qbuilder input,.qbuilder select{width:100%;min-width:0}
-.qopts{display:grid;grid-template-columns:1fr;gap:6px}.qopt{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center}.qimage{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.qimage img{max-width:130px;max-height:90px;object-fit:contain;border-radius:8px}.qitem{padding:8px;background:#3a2a14;border-radius:8px;display:flex;justify-content:space-between;gap:8px;align-items:center}.qitem span{min-width:0;overflow-wrap:anywhere}.qactions{display:flex;gap:8px;flex-wrap:wrap}.qactions button{flex:1}#qm .qpic{max-width:min(100%,520px);max-height:32vh;object-fit:contain;display:block;margin:8px auto;border-radius:10px}#qm .qsubmit{margin-top:8px}
 </style></head>
 <body>
 <div id="home" class="c">
@@ -122,22 +119,10 @@ details{background:#3a2a14;border-radius:10px;padding:8px 12px}summary{cursor:po
  </section>
  <section id="qs" hidden>
   <details id="aiq"><summary>✨ Buat soal dengan AI</summary><div class="ai"><input id="aiqt" placeholder="Topik soal (mis. Peninggalan sejarah Hindu-Buddha)"><div class="r"><input id="aiqj" placeholder="Jenjang (mis. MI kelas 5)"><input id="aiqn" type="number" min="1" max="20" value="5" style="max-width:90px"></div><input class="aikey" type="password" placeholder="API Key Claude (opsional, lebih stabil)" autocomplete="off"><button id="aiqb">✨ Buat Soal</button><small id="aiqm"></small></div></details>
-  <div class="qbuilder">
-   <b>➕ Tambah soal</b>
-   <select id="qtype"><option value="mcq">Pilihan ganda</option><option value="multi">Pilihan ganda kompleks</option><option value="short">Isian singkat</option></select>
-   <textarea id="qtext" rows="3" placeholder="Tulis pertanyaan di sini…"></textarea>
-   <div id="qopts" class="qopts"></div>
-   <div id="qanswer" hidden><input id="qanswerinput" placeholder="Kunci jawaban singkat"></div>
-   <div class="qimage"><label for="qimage">🖼️ Gambar soal (opsional)</label><input id="qimage" type="file" accept="image/*"><img id="qpreview" hidden alt="Pratinjau gambar soal"></div>
-   <div class="qactions"><button id="qadd" type="button">Tambah soal</button><button id="qclear" type="button">Kosongkan</button></div>
-   <small>Untuk pilihan ganda, tandai satu jawaban benar. Untuk pilihan ganda kompleks, tandai semua jawaban yang benar.</small>
-   <b>Daftar soal: <span id="qcount">0</span></b><div id="qlist"></div>
-  </div>
-  <details><summary>Impor soal format lama (opsional)</summary>
-   <small>Satu soal per baris: Pertanyaan | A | B | C | D | nomor jawaban benar (1-4)</small>
-   <textarea id="ed" rows="5"></textarea><button id="qimport" type="button">Impor soal lama ke daftar</button>
-  </details>
-  <button id="sv">Simpan semua soal</button><p id="msg"></p>
+  <small>Satu soal per baris: Pertanyaan | A | B | C | D | nomor jawaban benar (1-4)</small>
+  <textarea id="ed"></textarea>
+  <button id="sv">Simpan soal</button>
+  <p id="msg"></p>
  </section>
  <section id="mt" hidden>
   <details id="aim"><summary>✨ Buat materi dengan AI</summary><div class="ai"><input id="aimt" placeholder="Topik materi (mis. Alat-alat arkeolog)"><div class="r"><input id="aimj" placeholder="Jenjang (mis. MI kelas 5)"><input id="aimn" type="number" min="1" max="8" value="3" style="max-width:90px"></div><input class="aikey" type="password" placeholder="API Key Claude (opsional, lebih stabil)" autocomplete="off"><button id="aimb">✨ Buat Materi</button><small id="aimm"></small></div></details>
@@ -227,94 +212,57 @@ db = {
 };
 usr = { canEdit: () => true };
 
-let pch = null, presenceReady = false, pendingPresence = null, lastPresencePayload = null;
+let pch = null, presenceReady = false, pendingPresence = null;
 let roomStatus = 'CONNECTING', roomError = '', trackStatus = 'belum mengirim', syncCount = 0;
-function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount}${trackStatus?` · sinkron: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
+function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount} · pesan diterima: ${posCount}${trackStatus?` · kirim: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
 let PL = Object.create(null), posCount = 0, lastPos = '', lastPosT = 0, emitCb = null;
 function emitPeers(){
-  const now=Date.now(), next=Object.create(null);
-  if(pch && presenceReady){
-    try{
-      const state=pch.presenceState()||{};
-      for(const key of Object.keys(state)){
-        const entries=state[key]||[];const payload=entries.length?entries[entries.length-1]:null;
-        if(!payload || payload.t!=='s')continue;
-        const id=payload.id||key;next[id]=Object.assign({},payload,{seen:now});
-      }
-    }catch(e){roomError=e.message||String(e)}
-  }
-  PL=next;const list=Object.keys(PL).map(id=>({peer:id,presence:PL[id]}));
-  syncCount=list.length;
-  if(emitCb){try{emitCb({peers:list})}catch(e){console.warn(e)}}
+  const now = Date.now(), list = [];
+  for (const id in PL) { if (now - PL[id].seen > 8000) { delete PL[id]; continue; } list.push({ peer: id, presence: PL[id] }); }
+  syncCount = list.length;
+  if (emitCb) { try { emitCb({ peers: list }); } catch (e) { console.warn(e); } }
   showNet();
 }
 room = {
   pos: (pl) => {
-    lastPresencePayload=pl;
-    if(!pch||!presenceReady)return;
-    pch.track(pl).then(()=>{trackStatus='aktif';}).catch(e=>{trackStatus='GAGAL';roomError=e.message||String(e);showNet()});
+    if (!pch || !presenceReady) return;
+    pch.send({ type: 'broadcast', event: 'pos', payload: pl }).then(v => { trackStatus = String(v || 'ok'); }).catch(e => { trackStatus = 'GAGAL'; roomError = e.message || String(e); });
   },
   onPeers: (cb) => {
-    emitCb=cb;
-    pch=sb.channel('game-room',{config:{presence:{key:myPeerId},broadcast:{self:false,ack:false}}});
-    pch.on('broadcast',{event:'chat'},({payload})=>{if(window.onChat)window.onChat(payload)});
-    pch.on('presence',{event:'sync'},()=>{posCount++;emitPeers()});
-    pch.on('presence',{event:'join'},()=>{posCount++;emitPeers()});
-    pch.on('presence',{event:'leave'},()=>{posCount++;emitPeers()});
-    pch.subscribe(async(status,error)=>{
-      roomStatus=status;roomError=error?(error.message||String(error)):'';
-      presenceReady=status==='SUBSCRIBED';
-      if(presenceReady&&lastPresencePayload&&lastPresencePayload.t==='s'){
-        try{await pch.track(lastPresencePayload);trackStatus='aktif'}catch(e){trackStatus='GAGAL';roomError=e.message||String(e)}
-      }
-      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Koneksi multiplayer:',status,error||'');
-      emitPeers();showNet();
+    emitCb = cb;
+    pch = sb.channel('game-room', { config: { broadcast: { self: false, ack: false } } });
+    pch.on('broadcast', { event: 'pos' }, ({ payload }) => {
+      if (!payload || !payload.id) return;
+      posCount++;
+      if (payload.bye) { delete PL[payload.id]; emitPeers(); return; }
+      const isNew = !PL[payload.id];
+      PL[payload.id] = Object.assign(PL[payload.id] || {}, payload, { seen: Date.now() });
+      if (isNew) emitPeers();
     });
-    setInterval(emitPeers,1000);
+    pch.on('broadcast', { event: 'chat' }, ({ payload }) => { if (window.onChat) window.onChat(payload); });
+    pch.subscribe((status, error) => {
+      roomStatus = status;
+      roomError = error ? (error.message || String(error)) : '';
+      presenceReady = (status === 'SUBSCRIBED');
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('Koneksi multiplayer:', status, error || '');
+      showNet();
+    });
+    setInterval(emitPeers, 500);
   },
-  chat: (pl) => {if(pch&&presenceReady)pch.send({type:'broadcast',event:'chat',payload:pl}).catch(()=>{})},
+  chat: (pl) => { if (pch && presenceReady) pch.send({ type: 'broadcast', event: 'chat', payload: pl }).catch(() => {}); },
   presence: (obj) => {
-    if(obj&&obj.t==='x'){
-      lastPresencePayload=null;
-      if(pch&&presenceReady)pch.untrack().then(()=>{trackStatus='keluar';emitPeers()}).catch(()=>{});
-      else {trackStatus='keluar';showNet()}
+    if (obj && obj.t === 'x') {
+      if (pch && presenceReady) pch.send({ type: 'broadcast', event: 'pos', payload: { id: myPeerId, bye: 1 } }).catch(() => {});
+      trackStatus = 'keluar'; showNet();
     }
   }
 };
 
 const col=id=>`hsl(${Math.abs([...id].reduce((a,c)=>a*31+c.charCodeAt(0)|0,7))%360} 70% 55%)`;
-const toLines=l=>l.map(x=>[x.q,...(Array.isArray(x.o)?x.o:['','','','']),((x.a??0)+1)].join(' | ')).join('\n');
+const toLines=l=>l.map(x=>[x.q,...x.o,x.a+1].join(' | ')).join('\n');
 const parse=t=>t.split('\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length>=6&&p[0]).map(p=>({q:p[0],o:p.slice(1,5),a:Math.min(3,Math.max(0,(+p[5]||1)-1))}));
 const msg=t=>$('#msg').textContent=t;
 $('#ed').value=toLines(Q);
-let qImageData='';
-function qTypeUI(){
- const type=$('#qtype').value,opts=$('#qopts'),answer=$('#qanswer');
- opts.innerHTML='';answer.hidden=type!=='short';
- if(type==='short')return;
- for(let i=0;i<4;i++){
-  const row=document.createElement('div');row.className='qopt';
-  const input=document.createElement('input');input.placeholder='Pilihan '+String.fromCharCode(65+i);input.dataset.option=String(i);
-  const mark=document.createElement('input');mark.type=type==='multi'?'checkbox':'radio';mark.name='qcorrect';mark.dataset.correct=String(i);mark.title='Tandai jawaban benar';
-  row.append(input,mark);opts.append(row);
- }
-}
-function renderQList(){
- const box=$('#qlist');box.innerHTML='';$('#qcount').textContent=Q.length;
- Q.forEach((q,i)=>{const row=document.createElement('div');row.className='qitem';const label=document.createElement('span');label.textContent=(i+1)+'. ['+({mcq:'PG',multi:'PG kompleks',short:'Isian'}[q.type||'mcq'])+'] '+q.q+(q.image?' 🖼️':'');const del=document.createElement('button');del.textContent='Hapus';del.style.padding='6px 10px';del.onclick=()=>{Q.splice(i,1);renderQList()};row.append(label,del);box.append(row)});
-}
-function clearQForm(){ $('#qtext').value='';$('#qanswerinput').value='';$('#qimage').value='';$('#qpreview').hidden=true;$('#qpreview').removeAttribute('src');qImageData='';$('#qopts').querySelectorAll('input').forEach(x=>x.value='');$('#qopts').querySelectorAll('[data-correct]').forEach(x=>x.checked=false); }
-$('#qtype').onchange=qTypeUI;qTypeUI();renderQList();
-$('#qimage').onchange=()=>{const f=$('#qimage').files&&$('#qimage').files[0];if(!f)return;if(!f.type.startsWith('image/'))return msg('File harus berupa gambar.');if(f.size>8*1024*1024)return msg('Ukuran gambar maksimal 8 MB.');const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{const scale=Math.min(1,1000/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*scale));c.height=Math.max(1,Math.round(im.height*scale));c.getContext('2d').drawImage(im,0,0,c.width,c.height);qImageData=c.toDataURL('image/jpeg',.76);$('#qpreview').src=qImageData;$('#qpreview').hidden=false;URL.revokeObjectURL(u)};im.onerror=()=>{URL.revokeObjectURL(u);msg('Gambar tidak dapat dibaca.')};im.src=u;};
-$('#qadd').onclick=()=>{
- const type=$('#qtype').value,q=$('#qtext').value.trim();if(!q)return msg('Tulis pertanyaan terlebih dahulu.');
- let item={type,q,image:qImageData||''};
- if(type==='short'){item.answer=$('#qanswerinput').value.trim();if(!item.answer)return msg('Isi kunci jawaban singkat.');}
- else{const rows=[...$('#qopts').querySelectorAll('.qopt')],opts=rows.map(r=>r.querySelector('[data-option]').value.trim()),correct=rows.filter(r=>r.querySelector('[data-correct]').checked).map(r=>+r.querySelector('[data-correct]').dataset.correct);if(opts.some(x=>!x))return msg('Lengkapi semua pilihan jawaban.');if(!correct.length||type==='mcq'&&correct.length!==1)return msg(type==='mcq'?'Pilih tepat satu jawaban benar.':'Pilih minimal satu jawaban benar.');item.o=opts;if(type==='mcq')item.a=correct[0];else item.answers=correct;}
- Q.push(item);renderQList();clearQForm();msg('Soal ditambahkan. Klik Simpan semua soal untuk menyimpan ke database.');
-};
-$('#qclear').onclick=clearQForm;
-$('#qimport').onclick=()=>{const old=parse($('#ed').value);if(!old.length)return msg('Tidak ada soal teks lama yang valid untuk diimpor.');Q.push(...old.map(x=>Object.assign({type:'mcq',image:''},x)));renderQList();msg(old.length+' soal lama berhasil diimpor ke daftar.');};
 let MT=[{t:'Apa itu Arkeologi?',b:'Arkeologi adalah ilmu yang mempelajari kehidupan manusia masa lalu melalui peninggalan benda, bangunan, dan lingkungan yang ditinggalkannya. Para arkeolog menggali tanah dengan hati-hati, mencatat setiap temuan, lalu menganalisisnya untuk menyusun cerita masa lalu.'},
 {t:'Alat-alat Arkeolog',b:'Arkeolog memakai kuas halus untuk membersihkan benda rapuh, sendok semen kecil (trowel) untuk menggali, ayakan untuk menyaring tanah, meteran dan kotak galian (grid) untuk mencatat posisi temuan, serta kamera dan buku catatan untuk dokumentasi.'},
 {t:'Situs dan Artefak',b:'Situs adalah tempat ditemukannya peninggalan masa lalu. Artefak adalah benda buatan manusia, seperti gerabah, perkakas batu, atau perhiasan. Posisi artefak di dalam tanah sangat penting karena membantu menentukan umur dan fungsinya.'}];
@@ -327,7 +275,7 @@ const RC={};let cl=null,readM={},wr=0,cc=0,sT=0,wc=0,AT={},SQ={},Pz=0,vy=0,dg=nu
 /* Listener awal */
 if(usr.canEdit())$('#bg').hidden=false;
 db.doc('cfg/materi').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)){MT=s.data().list;$('#med').value=toMT(MT);if(R3)signs()}},()=>{});
-db.doc('cfg/questions').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)&&s.data().list.length){Q=s.data().list;$('#ed').value=toLines(Q);if(typeof renderQList==='function')renderQList()}},()=>{});
+db.doc('cfg/questions').onSnapshot(s=>{if(s.exists()&&Array.isArray(s.data().list)&&s.data().list.length){Q=s.data().list;$('#ed').value=toLines(Q)}},()=>{});
 room.onPeers(c=>{peers=c.peers.filter(p=>p.presence&&p.presence.t==='s');const on=new Set(peers.map(p=>p.peer));for(const k in RC)if(!on.has(k))RC[k].on=0;peers.forEach(p=>{const q=p.presence;RC[p.peer]={n:q.n,v:q.v,s:q.s,c:q.c||0,wg:q.wg||0,at:q.at||0,h:q.h||0,cg:q.cg||0,on:1}});lb()},()=>{});
 
 /* ---------- Avatar ---------- */
@@ -569,14 +517,13 @@ const cards=AV.map((a,i)=>{const d=document.createElement('div');d.className='ac
 pvInit();
 
 /* ---------- Siswa ---------- */
-$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}sendP();iv=iv||setInterval(sendP,350);musicOn()};
+$('#bs').onclick=()=>{nm=$('#nm').value.trim()||'Siswa';mode='s';show('game');if(!initW()){mode='';show('home');return}sh(24,100);rs();fsOn();if(!run){run=true;last=performance.now();requestAnimationFrame(loop)}sendP();iv=iv||setInterval(sendP,100);musicOn()};
 function fsOn(){const e=document.documentElement;if(e.requestFullscreen)e.requestFullscreen({navigationUI:'hide'}).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{})}catch(x){}}).catch(()=>{})}
 $('#fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen().catch(()=>{}):fsOn()};
 function sendP(){
  if(mode!='s')return;
  const now=performance.now(),x=+P.x.toFixed(2),y=+P.y.toFixed(2),a=+P.f.toFixed(2),z=+Pz.toFixed(2),k=[x,y,a,z,nm,av,sc,cc,wc,hunter,caught].join('|');
  if(k===lastPos&&now-lastPosT<1000)return;
- if(now-lastPosT<300)return;
  lastPos=k;lastPosT=now;
  room.pos({id:myPeerId,t:'s',n:nm,v:av,x,y,a,z,s:sc,c:cc,wg:wc,h:hunter?1:0,cg:caught?1:0,at:cc?+(sT/cc).toFixed(1):0});
 }
@@ -631,33 +578,22 @@ function showM(o){const m=$('#qm'),d=MT[o.i]||{t:'Materi',b:''};m.hidden=false;m
 function dig(){
  if(open||caught||hunter||gameOver)return;if(!near||lk()){if(nearT)climb(nearT);return}
  open=true;K={};P.f=P.a;dg={t0:performance.now()};const s=near;setTimeout(()=>{dg=null;ask(s)},850)}
-function ask(s){
- if(mode!='s'){open=false;return}if(caught||gameOver)return;
- const t0=performance.now(),q=Q[((SQ[s.i]!=null)?SQ[s.i]:(SQ[s.i]=Math.random()*Q.length|0))%Q.length],m=$('#qm');
+function ask(s){if(mode!='s'){open=false;return}if(caught||gameOver)return;const t0=performance.now(),q=Q[((SQ[s.i]!=null)?SQ[s.i]:(SQ[s.i]=Math.random()*Q.length|0))%Q.length],m=$('#qm');
  m.hidden=false;m.innerHTML='';
  const h=document.createElement('p');h.className='qq';h.textContent=q.q;m.append(h);
- if(q.image){const im=document.createElement('img');im.className='qpic';im.src=q.image;im.alt='Gambar soal';m.append(im)}
- let controls=[];
- const finish=(given)=>{
-  const el=(performance.now()-t0)/1000,at=AT[s.i]||0,bs=at==0?10:at==1?5:3;
-  let ok=false;
-  if((q.type||'mcq')==='short')ok=String(given).trim().toLocaleLowerCase('id')===String(q.answer||'').trim().toLocaleLowerCase('id');
-  else if(q.type==='multi'){const a=[...(q.answers||[])].map(Number).sort(),b=[...given].map(Number).sort();ok=a.length===b.length&&a.every((v,i)=>v===b[i])}
-  else ok=Number(given)===Number(q.a);
-  const bn=ok&&at===0?Math.round(10*Math.max(0,Math.min(1,1-(el-3)/17))):0;m.innerHTML='';
-  const r=document.createElement('p');r.textContent=ok?`✅ Benar! +${bs+bn} poin ${at?'(jawaban ulang, poin berkurang)':'('+el.toFixed(1)+' dtk, bonus kecepatan +'+bn+')'}`:'❌ Jawaban belum tepat. Poin −5. Peti masih ada, bisa dijawab lagi dengan poin lebih kecil.'+(wr+1>=2&&MT.length?' 🔒 Salah 2x berturut-turut: panjat pohon kelapa dan baca materinya dulu!':'');
-  const c=document.createElement('button');c.textContent='Lanjut';c.onclick=()=>{m.hidden=true;open=false};m.append(r,c);
-  if(ok){found[s.i]=1;sc+=bs+bn;cc++;sT+=el;wr=0}else{AT[s.i]=at+1;sc=Math.max(0,sc-5);wr++;wc++}
-  $('#sc').textContent=sc+' poin';sendP();
- };
- if(q.type==='short'){
-  const input=document.createElement('input');input.placeholder='Ketik jawaban singkat…';input.autocomplete='off';input.style.width='100%';const b=document.createElement('button');b.className='qsubmit';b.textContent='Kirim jawaban';b.onclick=()=>{if(input.value.trim())finish(input.value)};input.onkeydown=e=>{if(e.key==='Enter')b.click()};m.append(input,b);input.focus();
- }else if(q.type==='multi'){
-  (q.o||[]).forEach((t,i)=>{const label=document.createElement('label');label.style.display='flex';label.style.gap='10px';label.style.alignItems='center';const c=document.createElement('input');c.type='checkbox';c.value=String(i);c.style.width='22px';c.style.height='22px';const span=document.createElement('span');span.textContent=t;label.append(c,span);m.append(label);controls.push(c)});
-  const b=document.createElement('button');b.className='qsubmit';b.textContent='Periksa jawaban';b.onclick=()=>{const a=controls.filter(c=>c.checked).map(c=>+c.value);if(a.length)finish(a)};m.append(b);
- }else{
-  (q.o||[]).forEach((t,i)=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>finish(i);m.append(b)});
- }
+ q.o.forEach((t,i)=>{
+  const b=document.createElement('button');b.textContent=t;
+  b.onclick=()=>{
+   const ok=i==q.a,el=(performance.now()-t0)/1000,at=AT[s.i]||0,bs=at==0?10:at==1?5:3,bn=ok&&at==0?Math.round(10*Math.max(0,Math.min(1,1-(el-3)/17))):0;m.innerHTML='';
+   const r=document.createElement('p');r.textContent=ok?`✅ Benar! +${bs+bn} poin ${at?'(jawaban ulang, poin berkurang)':'('+el.toFixed(1)+' dtk, bonus kecepatan +'+bn+')'}`:'❌ Salah! Poin −5. Peti masih ada, bisa dijawab lagi dengan poin lebih kecil.'+(wr+1>=2&&MT.length?' 🔒 Salah 2x berturut-turut: panjat pohon kelapa dan baca materinya dulu!':'');
+   const c=document.createElement('button');c.textContent='Lanjut';c.onclick=()=>{m.hidden=true;open=false};
+   m.append(r,c);
+   if(ok){found[s.i]=1;sc+=bs+bn;cc++;sT+=el;wr=0}else{AT[s.i]=at+1;sc=Math.max(0,sc-5);wr++;wc++}
+   $('#sc').textContent=sc+' poin';
+   sendP();
+  };
+  m.append(b);
+ });
 }
 
 /* ---------- Guru ---------- */
@@ -717,8 +653,9 @@ function lb(){stt();
  if(!peers.length){const l=document.createElement('li');l.textContent='Menunggu siswa bergabung…';o.append(l)}
 }
 $('#sv').onclick=async()=>{
- if(!Q.length)return msg('Tambahkan atau impor minimal satu soal terlebih dahulu.');
- try{await db.doc('cfg/questions').set({list:Q});$('#ed').value=toLines(Q);renderQList();msg('✅ '+Q.length+' soal (semua tipe) disimpan')}
+ const l=parse($('#ed').value);
+ if(!l.length)return msg('Format: Pertanyaan | A | B | C | D | nomor jawaban benar (1-4)');
+ try{await db.doc('cfg/questions').set({list:l});Q=l;msg('✅ '+l.length+' soal disimpan')}
  catch(e){msg('Gagal menyimpan: '+(e.message||e.code))}
 };
 $('#msv').onclick=async()=>{const l=parseMT($('#med').value);if(!l.length)return mm('Isi minimal satu materi: judul di baris pertama, isi di bawahnya.');
@@ -726,128 +663,20 @@ $('#msv').onclick=async()=>{const l=parseMT($('#med').value);if(!l.length)return
 
 /* ===== MEGABOND: musik, AI, sertifikat, hapus data ===== */
 
-
-/* ----- Musik (taruh semua file mp3 satu folder dengan index.html) ----- */
-
-const TR = {
- intro: 'musicintro.mp3',
- farm: 'musicfarming.mp3',
- beast: 'musicbeast.mp3',
- timeout: 'musictimeout.mp3',
- win: 'musicwinner.mp3'
-}, AU = {};
-
-let muted = false, curT = null;
-
-try {
- muted = localStorage.getItem('mb_mute') == '1';
-} catch(e) {}
-
-$('#mu').textContent = muted ? '🔇' : '🔊';
-
-const au = n => AU[n] || (AU[n] = Object.assign(
- new Audio(TR[n]),
- {
-  loop: n !== 'win',
-  preload: 'auto',
-  volume: .45
- }
-));
-
-// Sound effect tertawa Beast
-const evilLaugh = Object.assign(
- new Audio('evillaugh.mp3'),
- {
-  loop: true,
-  preload: 'auto',
-  volume: .65
- }
-);
-
-function musicSync() {
-
- const waitingBeast =
-  mode == 's' &&
-  !gameOver &&
-  !hunter &&
-  !caught &&
-  SP.every(p => found[p.i]);
-
- const want = mode == 's'
-  ? (
-     gameOver ? 'win' :
-     (hunter || hSt.hs > 0) ? 'beast' :
-     waitingBeast ? 'timeout' :
-     'farm'
-    )
-  : mode == 'g' ? null : 'intro';
-
- if (want !== curT) {
-  if (curT) au(curT).pause();
-
-  curT = want;
-
-  if (want) au(want).currentTime = 0;
- }
-
- if (!curT) return;
-
- const a = au(curT);
-
- if (muted) {
-  a.pause();
- } else if (a.paused && !a.ended) {
-  a.play().catch(() => {});
- }
+/* ----- Musik (taruh file mp3 satu folder dengan index.html) ----- */
+const TR={intro:'musicintro.mp3',farm:'musicfarming.mp3',beast:'musicbeast.mp3',win:'musicwinner.mp3'},AU={};let muted=false,curT=null;
+try{muted=localStorage.getItem('mb_mute')=='1'}catch(e){}
+$('#mu').textContent=muted?'🔇':'🔊';
+const au=n=>AU[n]||(AU[n]=Object.assign(new Audio(TR[n]),{loop:n!=='win',preload:'auto',volume:.45}));
+function musicSync(){
+ const want=mode=='s'?(gameOver?'win':(hunter||hSt.hs>0)?'beast':'farm'):mode=='g'?null:'intro';
+ if(want!==curT){if(curT)au(curT).pause();curT=want;if(want)au(want).currentTime=0}
+ if(!curT)return;const a=au(curT);
+ if(muted)a.pause();else if(a.paused&&!a.ended)a.play().catch(()=>{});
 }
-
-// Sound effect Beast
-
-function beastSoundSync() {
-
- const beastActive =
-  mode == 's' &&
-  !gameOver &&
-  (hunter || hSt.hs > 0);
-
- if (muted || !beastActive) {
-  evilLaugh.pause();
-  evilLaugh.currentTime = 0;
-  return;
- }
-
- if (evilLaugh.paused) {
-  evilLaugh.play().catch(() => {});
- }
-}
-
-
-function musicOn(){musicSync();beastSoundSync()}
-
-// Tombol mute
-$('#mu').onclick = () => {
-
- muted = !muted;
-
- try {
-  localStorage.setItem('mb_mute', muted ? '1' : '0');
- } catch(e) {}
-
- $('#mu').textContent = muted ? '🔇' : '🔊';
-
- musicOn();
-};
-
-// Sinkronisasi audio
-setInterval(() => {
- musicSync();
- beastSoundSync();
-}, 500);
-
-['pointerdown', 'keydown'].forEach(ev => {
- addEventListener(ev, musicOn)
-});
-
+function musicOn(){musicSync()}
+$('#mu').onclick=()=>{muted=!muted;try{localStorage.setItem('mb_mute',muted?'1':'0')}catch(e){}$('#mu').textContent=muted?'🔇':'🔊';musicSync()};
+setInterval(musicSync,500);['pointerdown','keydown'].forEach(ev=>addEventListener(ev,musicSync));
 
 /* ----- AI pembuat soal & materi ----- */
 const AIK='mb_aikey',aiKey=()=>{try{return localStorage.getItem(AIK)||''}catch(e){return ''}};
@@ -876,8 +705,8 @@ $('#aiqb').onclick=async()=>{
   const cl2=s=>String(s).replace(/\|/g,'/').replace(/\s+/g,' ').trim();
   const L=arr.filter(x=>x&&x.q&&Array.isArray(x.o)&&x.o.length>=4).map(x=>({q:cl2(x.q),o:x.o.slice(0,4).map(cl2),a:Math.min(3,Math.max(0,+x.a||0))}));
   if(!L.length)throw new Error('AI tidak menghasilkan soal yang valid, coba lagi.');
-  Q.push(...L.map(x=>Object.assign({type:'mcq',image:''},x)));renderQList();$('#ed').value=toLines(Q);
-  aiSay('#aiqm','✅ '+L.length+' soal pilihan ganda ditambahkan ke daftar. Periksa daftar, lalu klik "Simpan semua soal".');
+  const ed=$('#ed');ed.value=(ed.value.trim()?ed.value.trim()+'\n':'')+toLines(L);
+  aiSay('#aiqm','✅ '+L.length+' soal ditambahkan ke kotak di bawah. Periksa dulu, lalu klik "Simpan soal".');
  }catch(e){aiSay('#aiqm','❌ '+(e.message||e))}finally{b.disabled=false}
 };
 $('#aimb').onclick=async()=>{
@@ -980,7 +809,7 @@ document.getElementById('delq').onclick=async()=>{
  try{
   const {data,error}=await sb.from('game_config').delete().in('key',['questions','materi']).select();
   if(error)throw error;
-  Q=DEFQ.map(q=>Object.assign({type:'mcq',image:''},q));MT=[];if(R3)signs();$('#ed').value=toLines(Q);if(typeof renderQList==='function')renderQList();$('#med').value='';
+  Q=DEFQ.slice();MT=[];if(R3)signs();$('#ed').value=toLines(Q);$('#med').value='';
   el.textContent=data&&data.length?'✅ Soal & materi dihapus ('+data.length+' data). Soal kembali ke contoh bawaan; siswa yang sedang main perlu memuat ulang halaman.':noRow('game_config');
  }catch(e){el.textContent='❌ Gagal menghapus: '+(e.message||e)}
 };
