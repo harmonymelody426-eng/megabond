@@ -844,7 +844,7 @@ me.rotation.y=Math.PI/2-P.f;
  {const u=me.userData;u.sv.visible=!!dg;u.body.rotation.x=dg?.25:0;if(dg){const w2=-1.5+Math.sin(dk*17)*1;u.arms[0].rotation.x=w2;u.arms[1].rotation.x=w2;u.legs[0].rotation.x=u.legs[1].rotation.x=0}}
  const ang=P.a+Math.PI*(1-cb),kS=1+(meSc-1)*.7,dd=(CD+(2.3-CD)*cb)*kS*(inCave()?.45:1);CM.position.set(P.x+Math.cos(ang)*dd,(2.1-.5*cb)*kS+cpv*(1-cb)+yb,P.y+Math.sin(ang)*dd);
  const cg=gh(CM.position.x,CM.position.z)+.7;if(CM.position.y<cg)CM.position.y=cg;
- CM.lookAt(P.x+fx*1.5*(1-cb),kS+yb+.35*cb,P.y+fz*1.5*(1-cb));if(fly>.01){CM.position.y+=fly*W*.75;CM.position.x+=Math.cos(ang)*fly*W*.3;CM.position.z+=Math.sin(ang)*fly*W*.3;CM.lookAt(P.x,yb*(1-fly)*.5,P.y)}
+ CM.lookAt(P.x+fx*1.5*(1-cb),kS+yb+.35*cb,P.y+fz*1.5*(1-cb));if(fly>.01){CM.position.y+=fly*6;CM.position.x+=Math.cos(ang)*fly*6;CM.position.z+=Math.sin(ang)*fly*6;CM.lookAt(P.x+fx*6*fly,yb-fly*5,P.y+fz*6*fly)}
  dl.position.set(P.x+20,35,P.y+12);dl.target.position.set(P.x,0,P.y);
  for(const c of chests){const vi=c.userData.i<nSP()&&!found[c.userData.i];c.visible=vi;if(vi)chestAnim(c,t,1.25)}
  if(sfog)SC.fog=sfog;R3.render(SC,CM)}
