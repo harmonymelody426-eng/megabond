@@ -620,7 +620,7 @@ function onBad(){streak=0}
 let lastWarn=0;
 function fxTick(dt){FX=FX||$('#fx');const t=performance.now()/1000,u=me.userData;if(wingT>0)wingT=Math.max(0,wingT-dt);fly+=((wingT>0?1:0)-fly)*Math.min(1,dt*1.6);animTick(dt,1);bearSfx();
  if(!u.wg)u.wg=mkWings(u.body);u.wg.visible=fly>.02;if(u.wg.visible){const f=Math.sin(t*(wingT>0?16:6))*.45;u.wg.children[0].rotation.z=.5+f;u.wg.children[1].rotation.z=-.5-f}
- sfog.near=22+fly*400;sfog.far=65+fly*500;
+ sfog.near=22+fly*100;sfog.far=65+fly*150;
  if(CAVE){CAVE.bar.visible=sc>=20;chestAnim(CAVE.chest,t,1.3)}
  const sn=SC.userData.snow;if(sn){const a=sn.geometry.attributes.position.array;for(let i=1;i<a.length;i+=3){a[i]-=dt*1.8;if(a[i]<0)a[i]=24}sn.geometry.attributes.position.needsUpdate=true;sn.position.set(P.x,0,P.y)}
  const e=[];e.push(wingT>0?'🪽 Sayap '+Math.ceil(wingT)+' dtk — cari peti dari atas!':'🔥 Beruntun '+streak+'/3 → sayap');
@@ -905,7 +905,7 @@ function loop(t){if(mode!='s'){run=false;return}
   mvg=L>.05?1:0;const nx=P.x+vx*(hunter?4.8:3.6)*dt,ny=P.y+vy*(hunter?4.8:3.6)*dt;
   if(mvg){const ux=vx/L*.3,uy=vy/L*.3,ok=(x,y)=>gh(x+ux,y+uy)<=Pz+.35;if(ok(nx,ny)){P.x=nx;P.y=ny}else if(ok(nx,P.y))P.x=nx;else if(ok(P.x,ny))P.y=ny;let df=Math.atan2(vy,vx)-P.f;df=((df+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;P.f+=df*Math.min(1,dt*12)}hit();if(mvg)wt+=dt*9;
  }
- {const g=gh(P.x,P.y);if(wingT>0){vy=0;Pz+=(34-Pz)*Math.min(1,dt*1.8)}else if(Pz>g+.01||vy>0){vy-=22*dt;Pz+=vy*dt;if(Pz<=g){Pz=g;vy=0}}else{Pz=g;vy=0}}
+ {const g=gh(P.x,P.y);if(wingT>0){vy=0;Pz+=(15-Pz)*Math.min(1,dt*1.8)}else if(Pz>g+.01||vy>0){vy-=22*dt;Pz+=vy*dt;if(Pz<=g){Pz=g;vy=0}}else{Pz=g;vy=0}}
  if(cl){if(cl.ph=='up'){cl.y=Math.min(5,cl.y+2.4*dt);wt+=dt*8;if(cl.y>=5){cl.ph='read';showM(cl.o)}}else if(cl.ph=='down'){cl.y=Math.max(0,cl.y-3*dt);wt+=dt*8;if(cl.y<=0){cl=null;open=false}}}
  near=SP.find(s=>s.i<nSP()&&!found[s.i]&&Math.hypot(s.x-P.x,s.y-P.y)<1.4)||null;
  nearT=(open||caught||hunter)?null:OB.find(o=>o.k=='kelapa'&&o.i<MT.length&&Math.hypot(o.x-P.x,o.y-P.y)<o.r+1.3)||null;
