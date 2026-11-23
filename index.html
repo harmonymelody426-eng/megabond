@@ -662,13 +662,32 @@ function mkScene(m){SG=SG||new THREE.SphereGeometry(1,24,18);CG=CG||new THREE.Cy
  SC=new THREE.Scene();SC.background=new THREE.Color(ice?'#8fc6ec':'#8fd0f0');SC.fog=new THREE.Fog(ice?'#b9dcf3':'#bfe6f5',22,65);sfog=SC.fog;CM=CM||new THREE.PerspectiveCamera(58,1,.1,600);
  SC.add(new THREE.HemisphereLight(ice?'#d2e8ff':'#dff3ff',ice?'#6f93bd':'#4a7a3a',ice?.8:.95));
  dl=new THREE.DirectionalLight(ice?'#ffeccc':'#fff3d6',ice?1.45:1.1);dl.castShadow=QS[QL].sh>0;dl.shadow.mapSize.set(QS[QL].sh||512,QS[QL].sh||512);const c=dl.shadow.camera;c.left=c.bottom=-24;c.right=c.top=24;c.far=100;SC.add(dl,dl.target);
- ice?worldIce():world();chasm(ice);signs();SCm=m}
+ ice?worldIce():world();chasm(ice);if(ice)bigSign();signs();SCm=m}
 function chasm(ice){const r=rng(77),earth=M(ice?'#e3eef7':'#7a5a35',{roughness:1}),rA=M(ice?'#8fa7bd':'#6b5a44',{roughness:1,flatShading:true}),rB=M(ice?'#6f8aa3':'#52432f',{roughness:1,flatShading:true}),pit=new THREE.MeshBasicMaterial({color:ice?'#2a3f55':'#1b130c'});
  const add=(m,x,y,z,sx,sy,sz)=>{const o=mesh(BG,m,x,y,z,sx,sy,sz);o.castShadow=false;o.receiveShadow=false;SC.add(o)};
  add(pit,W/2,-38,W/2,900,1,900);
  for(let e=0;e<4;e++){const ns=e<2;
   for(let s=-6;s<W+6;s+=7){const l=7.3,ins=r()*1.1,c=s+l/2,off=(e%2?W+.5+ins:-.5-ins),m=r()<.5?rA:rB;add(m,ns?c:off,-19.8,ns?off:c,ns?l:1.2,36.4,ns?1.2:l)}
   add(earth,ns?W/2:(e==2?-.4:W+.4),-.8,ns?(e==0?-.4:W+.4):W/2,ns?W+10:.8,1.6,ns?.8:W+10)}}
+/* ===== Tulisan 3D besar di atas goa (Dunia Es) ===== */
+const SIGN_LINES=[['MEGABOND',.45],['ADVENTURE',.45],['MIN 3 BONDOWOSO',.3]],SIGN_POS=[79,46.5];
+function bigSign(){const T=THREE,GL={
+ A:['.XXX.','X...X','X...X','XXXXX','X...X','X...X','X...X'],B:['XXXX.','X...X','X...X','XXXX.','X...X','X...X','XXXX.'],
+ D:['XXXX.','X...X','X...X','X...X','X...X','X...X','XXXX.'],E:['XXXXX','X....','X....','XXXX.','X....','X....','XXXXX'],
+ G:['.XXXX','X....','X....','X..XX','X...X','X...X','.XXXX'],I:['XXXXX','..X..','..X..','..X..','..X..','..X..','XXXXX'],
+ M:['X...X','XX.XX','X.X.X','X.X.X','X...X','X...X','X...X'],N:['X...X','XX..X','X.X.X','X..XX','X...X','X...X','X...X'],
+ O:['.XXX.','X...X','X...X','X...X','X...X','X...X','.XXX.'],R:['XXXX.','X...X','X...X','XXXX.','X.X..','X..X.','X...X'],
+ S:['.XXXX','X....','X....','.XXX.','....X','....X','XXXX.'],T:['XXXXX','..X..','..X..','..X..','..X..','..X..','..X..'],
+ U:['X...X','X...X','X...X','X...X','X...X','X...X','.XXX.'],V:['X...X','X...X','X...X','X...X','X...X','.X.X.','..X..'],
+ W:['X...X','X...X','X...X','X.X.X','X.X.X','XX.XX','X...X'],'3':['XXXX.','....X','....X','.XXX.','....X','....X','XXXX.']};
+ const COL=['#ff3b3b','#ff9a1f','#ffd83a','#3ddc5a','#26c6f0','#3a6bff','#a24bff','#ff4fa3'],per=COL.map(()=>[]);
+ const L=SIGN_LINES.map(a=>({t:a[0],ps:a[1],y:0}));let yy=0;for(let i=L.length-1;i>=0;i--){L[i].y=yy;yy+=7*L[i].ps+.9}
+ let ci=0;for(const ln of L){const n=ln.t.length,x0=-(n*6-1)*ln.ps/2;for(let k=0;k<n;k++){const ch=ln.t[k];if(ch==' ')continue;const g=GL[ch],c=ci++%COL.length;
+  for(let r=0;r<7;r++)for(let q=0;q<5;q++)if(g[r][q]=='X')per[c].push([x0+(k*6+q+.5)*ln.ps,ln.y+(6-r+.5)*ln.ps,ln.ps])}}
+ const grp=new T.Group(),m4=new T.Matrix4();
+ per.forEach((a,i)=>{if(!a.length)return;const mat=new T.MeshStandardMaterial({color:COL[i],emissive:COL[i],emissiveIntensity:.55,roughness:.55,flatShading:true,fog:false}),im=new T.InstancedMesh(BG,mat,a.length);
+  a.forEach((p,j)=>{m4.makeScale(p[2],p[2],p[2]*2.4);m4.setPosition(p[0],p[1],0);im.setMatrixAt(j,m4)});im.instanceMatrix.needsUpdate=true;im.frustumCulled=false;im.castShadow=false;im.receiveShadow=false;grp.add(im)});
+ const sx=SIGN_POS[0],sz=SIGN_POS[1];grp.position.set(sx,4.2,sz);grp.rotation.y=Math.atan2(W/2-sx,W/2-sz);SC.add(grp)}
 function initW(m){try{if(!R3){R3=new THREE.WebGLRenderer({canvas:cvs,antialias:QS[QL].aa,powerPreference:'high-performance'});R3.setPixelRatio(Math.min(devicePixelRatio||1,QS[QL].pr));R3.shadowMap.enabled=QS[QL].sh>0}
  m=m||MAPID;if(!SC||SCm!==m)mkScene(m);if(me)SC.remove(me);me=buildAv(av);SC.add(me);me.visible=mode!='g';return true}
  catch(e){console.warn(e);$('#gm').textContent='3D tidak bisa dijalankan di perangkat ini (WebGL).';return false}}
