@@ -680,14 +680,33 @@ function bigSign(){const T=THREE,GL={
  S:['.XXXX','X....','X....','.XXX.','....X','....X','XXXX.'],T:['XXXXX','..X..','..X..','..X..','..X..','..X..','..X..'],
  U:['X...X','X...X','X...X','X...X','X...X','X...X','.XXX.'],V:['X...X','X...X','X...X','X...X','X...X','.X.X.','..X..'],
  W:['X...X','X...X','X...X','X.X.X','X.X.X','XX.XX','X...X'],'3':['XXXX.','....X','....X','.XXX.','....X','....X','XXXX.']};
- const COL=['#ff3b3b','#ff9a1f','#ffd83a','#3ddc5a','#26c6f0','#3a6bff','#a24bff','#ff4fa3'],per=COL.map(()=>[]);
  const L=SIGN_LINES.map(a=>({t:a[0],ps:a[1],y:0}));let yy=0;for(let i=L.length-1;i>=0;i--){L[i].y=yy;yy+=7*L[i].ps+.9}
- let ci=0;for(const ln of L){const n=ln.t.length,x0=-(n*6-1)*ln.ps/2;for(let k=0;k<n;k++){const ch=ln.t[k];if(ch==' ')continue;const g=GL[ch],c=ci++%COL.length;
-  for(let r=0;r<7;r++)for(let q=0;q<5;q++)if(g[r][q]=='X')per[c].push([x0+(k*6+q+.5)*ln.ps,ln.y+(6-r+.5)*ln.ps,ln.ps])}}
- const grp=new T.Group(),m4=new T.Matrix4();
- per.forEach((a,i)=>{if(!a.length)return;const mat=new T.MeshStandardMaterial({color:COL[i],emissive:COL[i],emissiveIntensity:.55,roughness:.55,flatShading:true,fog:false}),im=new T.InstancedMesh(BG,mat,a.length);
-  a.forEach((p,j)=>{m4.makeScale(p[2],p[2],p[2]*2.4);m4.setPosition(p[0],p[1],0);im.setMatrixAt(j,m4)});im.instanceMatrix.needsUpdate=true;im.frustumCulled=false;im.castShadow=false;im.receiveShadow=false;grp.add(im)});
- const sx=SIGN_POS[0],sz=SIGN_POS[1];grp.position.set(sx,4.2,sz);grp.rotation.y=Math.atan2(W/2-sx,W/2-sz);SC.add(grp)}
+ const cells=[];let halfW=0;for(const ln of L){const n=ln.t.length,x0=-(n*6-1)*ln.ps/2;halfW=Math.max(halfW,(n*6-1)*ln.ps/2);for(let k=0;k<n;k++){const ch=ln.t[k];if(ch==' ')continue;const g=GL[ch];for(let r=0;r<7;r++)for(let q=0;q<5;q++)if(g[r][q]=='X')cells.push([x0+(k*6+q+.5)*ln.ps,ln.y+(6-r+.5)*ln.ps,ln.ps])}}
+ const grp=new T.Group(),m4=new T.Matrix4(),cl=new T.Color(),LIFT=2.6,DEP=.8;
+ /* bahan kaca es biru muda */
+ const glass=new T.MeshPhysicalMaterial({color:'#ffffff',transparent:true,opacity:.6,roughness:.04,metalness:.05,clearcoat:1,clearcoatRoughness:.05,emissive:'#5fb6e6',emissiveIntensity:.2,depthWrite:false,fog:false});
+ const core=new T.MeshStandardMaterial({color:'#ffffff',emissive:'#8fd3f5',emissiveIntensity:.3,roughness:.25,fog:false});
+ const snow=new T.MeshStandardMaterial({color:'#f2f8fd',roughness:.95}),glassS=glass.clone(),coreS=core.clone();glassS.color.set('#aee3fb');coreS.color.set('#d4f0ff');
+ const sh=new T.InstancedMesh(BG,glass,cells.length),co=new T.InstancedMesh(BG,core,cells.length);
+ cells.forEach((p,j)=>{const t=Math.sin(j*12.9898)*.5+.5;
+  m4.makeScale(p[2]*.99,p[2]*.99,DEP);m4.setPosition(p[0],p[1],0);sh.setMatrixAt(j,m4);sh.setColorAt(j,cl.set('#aee3fb').lerp(cl.clone().set('#d6f3ff'),t*.7));
+  m4.makeScale(p[2]*.6,p[2]*.6,DEP*.55);m4.setPosition(p[0],p[1],0);co.setMatrixAt(j,m4);co.setColorAt(j,cl.set('#c5ebff').lerp(cl.clone().set('#f0fbff'),t))});
+ for(const im of[sh,co]){im.instanceMatrix.needsUpdate=true;im.instanceColor.needsUpdate=true;im.frustumCulled=false;im.castShadow=true;im.receiveShadow=false}
+ sh.renderOrder=2;grp.add(co,sh);
+ /* papan alas dari es + 2 tiang yang menapak ke tanah (tidak melayang) */
+ const bx=(m,x,y,z,w,h,d,cs)=>{const o=new T.Mesh(BG,m,0,0,0);o.position.set(x,y,z);o.scale.set(w,h,d);o.castShadow=cs!==0;o.receiveShadow=true;grp.add(o);return o};
+ bx(coreS,0,-.3,0,halfW*2+2.2,.6,DEP*2.6);bx(glassS,0,-.3,0,halfW*2+2.4,.7,DEP*2.8).renderOrder=2;
+ for(const d of[-1,1]){const x=d*(halfW-1.6),h=LIFT+.2,cy=(-.3+(-LIFT-.2))/2;
+  bx(coreS,x,cy,0,1.1,h,1.1);bx(glassS,x,cy,0,1.6,h,1.6).renderOrder=2;
+  const mo=new T.Mesh(SG,snow);mo.position.set(x,-LIFT,0);mo.scale.set(2.6,.75,2.2);mo.castShadow=true;mo.receiveShadow=true;grp.add(mo);
+  for(let j=0;j<4;j++){const a=j*1.6+d,cr=new T.Mesh(new T.ConeGeometry(1,1,6),glassS);cr.position.set(x+Math.cos(a)*1.5,-LIFT+.7,Math.sin(a)*1.2);cr.scale.set(.28,1.2+j*.25,.28);cr.rotation.set(Math.sin(a)*.35,0,-Math.cos(a)*.35);cr.castShadow=true;cr.renderOrder=2;grp.add(cr)}}
+ /* efek bayangan lembut + pantulan cahaya biru di tanah */
+ const mk=(c0,c1)=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),gr=g.createRadialGradient(64,64,0,64,64,64);gr.addColorStop(0,c0);gr.addColorStop(1,c1);g.fillStyle=gr;g.fillRect(0,0,128,128);return new T.CanvasTexture(c)};
+ const sd=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({map:mk('rgba(18,70,130,.5)','rgba(18,70,130,0)'),transparent:true,depthWrite:false}));
+ sd.rotation.x=-Math.PI/2;sd.position.set(-1.5,-LIFT+.04,-1.2);sd.scale.set(halfW*2+8,10,1);sd.renderOrder=1;grp.add(sd);
+ const gl=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({map:mk('rgba(140,225,255,.55)','rgba(140,225,255,0)'),transparent:true,depthWrite:false,blending:T.AdditiveBlending}));
+ gl.rotation.x=-Math.PI/2;gl.position.set(0,-LIFT+.06,4.5);gl.scale.set(halfW*2+4,9,1);gl.renderOrder=1;grp.add(gl);
+ const sx=SIGN_POS[0],sz=SIGN_POS[1];grp.position.set(sx,LIFT,sz);grp.rotation.y=Math.atan2(W/2-sx,W/2-sz);SC.add(grp)}
 function initW(m){try{if(!R3){R3=new THREE.WebGLRenderer({canvas:cvs,antialias:QS[QL].aa,powerPreference:'high-performance'});R3.setPixelRatio(Math.min(devicePixelRatio||1,QS[QL].pr));R3.shadowMap.enabled=QS[QL].sh>0}
  m=m||MAPID;if(!SC||SCm!==m)mkScene(m);if(me)SC.remove(me);me=buildAv(av);SC.add(me);me.visible=mode!='g';return true}
  catch(e){console.warn(e);$('#gm').textContent='3D tidak bisa dijalankan di perangkat ini (WebGL).';return false}}
@@ -986,8 +1005,8 @@ function loop(t){if(mode!='s'){run=false;return}
   mvg=L>.05?1:0;const SPD=(hunter?7.2:5.4)*(wingT>0?2:1),nx=P.x+vx*SPD*dt,ny=P.y+vy*SPD*dt;
   if(mvg){const ux=vx/L*.3,uy=vy/L*.3,ok=(x,y)=>gh(x+ux,y+uy)<=Pz+.35;if(ok(nx,ny)){P.x=nx;P.y=ny}else if(ok(nx,P.y))P.x=nx;else if(ok(P.x,ny))P.y=ny;let df=Math.atan2(vy,vx)-P.f;df=((df+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;P.f+=df*Math.min(1,dt*12)}hit();if(mvg)wt+=dt*(wingT>0?9:13);
  }
- {let g=gh(P.x,P.y);{const rf=roofH(P.x,P.y);if(rf&&Pz>=rf-.3)g=Math.max(g,rf)}{const out=P.x<0||P.x>W||P.y<0||P.y>W;if(out&&wingT<=0){if(!fell&&Pz<.6){fell=1;K={};if(window.jreset)jreset();toast('🕳️ Awas jurang! Kamu terjatuh…',2500)}g=-999}}if(wingT>0){vy=0;Pz+=(10-Pz)*Math.min(1,dt*1.8)}else if(Pz>g+.01||vy>0){vy-=22*dt;Pz+=vy*dt;if(Pz<=g){Pz=g;vy=0}}else{Pz=g;vy=0}}
- if(fell&&Pz<-18){fell=0;P.x=6;P.y=6;Pz=0;vy=0;inv=Math.max(inv,performance.now()+3000);toast('🕳️ Kamu jatuh ke jurang! Kembali ke titik awal (kebal 3 detik).',4500);sendP()}
+ {let g=gh(P.x,P.y);{const rf=roofH(P.x,P.y);if(rf&&Pz>=rf-.3)g=Math.max(g,rf)}{const out=P.x<0||P.x>W||P.y<0||P.y>W;if(out&&wingT<=0){if(!fell&&Pz<.6){fell=1;K={};if(window.jreset)jreset();sc=0;found={};AT={};SQ={};wr=0;cc=0;wc=0;sT=0;streak=0;$('#sc').textContent='0 poin';toast('🕳️ Awas jurang! Kamu terjatuh… Skor direset ke 0!',3000);sendP()}g=-999}}if(wingT>0){vy=0;Pz+=(10-Pz)*Math.min(1,dt*1.8)}else if(Pz>g+.01||vy>0){vy-=22*dt;Pz+=vy*dt;if(Pz<=g){Pz=g;vy=0}}else{Pz=g;vy=0}}
+ if(fell&&Pz<-18){fell=0;P.x=6;P.y=6;Pz=0;vy=0;inv=Math.max(inv,performance.now()+3000);toast('🕳️ Kamu jatuh ke jurang! Skor direset ke 0 dan kembali ke titik awal (kebal 3 detik).',4500);sendP()}
  if(cl){if(cl.ph=='up'){cl.y=Math.min(5,cl.y+2.4*dt);wt+=dt*8;if(cl.y>=5){cl.ph='read';showM(cl.o)}}else if(cl.ph=='down'){cl.y=Math.max(0,cl.y-3*dt);wt+=dt*8;if(cl.y<=0){cl=null;open=false}}}
  near=SP.find(s=>s.i<nSP()&&!found[s.i]&&Math.hypot(s.x-P.x,s.y-P.y)<1.4)||null;
  nearT=(open||caught||hunter)?null:OB.find(o=>o.k=='kelapa'&&o.i<MT.length&&Math.hypot(o.x-P.x,o.y-P.y)<o.r+1.3)||null;
