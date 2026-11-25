@@ -28,7 +28,7 @@ h1{margin:0;font-size:30px}
 .ac.on{border-color:var(--a);background:#4a3820}
 #qm{position:fixed;inset:0;background:#000c;display:flex;flex-direction:column;gap:10px;justify-content:center;padding:24px;max-width:520px;margin:0 auto;z-index:5}
 #qm p{font-size:18px;margin:0 0 6px}
-#teach{display:flex;flex-direction:column;height:100vh;padding:8px;gap:8px;max-width:none;margin:0 auto}
+#teach{display:flex;flex-direction:column;height:100vh;height:100dvh;padding:8px;gap:8px;max-width:none;margin:0 auto}
 nav{display:flex;gap:6px}nav button{flex:1;background:#4a3820;color:var(--t)}nav button.on{background:var(--a);color:#2a1a05}
 section{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
 #mapw{position:relative;flex:1;min-height:360px;border-radius:12px;overflow:hidden}
@@ -255,7 +255,7 @@ usr = { canEdit: () => true };
 
 let pch = null, presenceReady = false, pendingPresence = null;
 let roomStatus = 'CONNECTING', roomError = '', trackStatus = 'belum mengirim', syncCount = 0;
-function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount} · pesan diterima: ${posCount}${trackStatus?` · kirim: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
+function showNet(){const msg=`Realtime: ${roomStatus} · pemain: ${syncCount} · pesan diterima: ${posCount}${trackStatus?` · kirim: ${trackStatus}`:''}${roomError?` · ${roomError}`:''}${(typeof predSrc=='function'&&predSrc())?' · hewan buas: sinkron':''}`;const e=$('#net'),p=$('#pnet');if(e)e.textContent=msg;if(p)p.textContent=msg;}
 let PL = Object.create(null), posCount = 0, lastPos = '', lastPosT = 0, emitCb = null;
 function emitPeers(){
   const now = Date.now(), list = [];
@@ -585,13 +585,14 @@ function brWay(a,tx,ty){if(!RIVER||RIVER.walk||a.ig)return[tx,ty];const by=RIVER
  if(onB||Math.hypot(a.x-(bx+sP*off),a.y-by)<1.6)return[bx-sP*off,by];return[bx+sP*off,by]}
 function stepA(a,tx,ty,s,dt){const dx=tx-a.x,dy=ty-a.y,d=Math.hypot(dx,dy);if(d<.05)return 0;const base=Math.atan2(dy,dx),st=s*dt,sg=a.sd||1,look=a.r+.9;let an=null;for(const pass of[1,0]){for(const o of[0,.4,.8,1.25,1.7,2.3]){for(const sd of(o?[sg,-sg]:[1])){const q=base+o*sd,c=Math.cos(q),n=Math.sin(q);if(aOK(a.x+c*st,a.y+n*st,a.r,a.ig,a.tr)&&(!pass||aOK(a.x+c*(st+look),a.y+n*(st+look),a.r,a.ig,a.tr))){an=q;if(o)a.sd=sd;break}}if(an!==null)break}if(an!==null)break}if(an===null){a.tt=0;return 0}a.x+=Math.cos(an)*st;a.y+=Math.sin(an)*st;let da=an-a.fa;da=((da+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;a.fa+=da*Math.min(1,dt*7);return 1}
 function bite(a){inv=performance.now()+10000;sc=0;found={};AT={};SQ={};wr=0;cc=0;wc=0;sT=0;streak=0;open=false;dg=null;cl=null;K={};if(window.jreset)jreset();$('#qm').hidden=true;P.x=6;P.y=6;Pz=0;vy=0;a.idle=performance.now()/1000+3;a.tt=0;$('#sc').textContent='0 poin';toast(PRED[a.k].e+' Kamu diserang '+PRED[a.k].n.toLowerCase()+'! Skor direset ke 0. 🛡️ Kamu kebal 10 detik, segera kabur!',6500);sendP()}
-let PRX={},lastPred=0;
-function predLeader(){let b=mode=='s'?myPeerId:null;const nw=Date.now();for(const p of peers){if(nw-((p.presence&&p.presence.seen)||0)>5000)continue;if(b===null||p.peer<b)b=p.peer}return b}
-window.onPred=p=>{if(!p||p.m!==MAPID||!Array.isArray(p.a)||p.id===myPeerId||p.id!==predLeader())return;const nw=performance.now();for(const e of p.a)PRX[e[0]]={x:+e[1],y:+e[2],f:+e[3],c:e[4]?1:0,t:nw}};
+var PS={};let PRX={},lastPred=0;
+function predSrc(){const nw=performance.now();let b=null;for(const k in PS){if(nw-PS[k]>1500){delete PS[k];continue}if(b===null||k<b)b=k}return b}
+function predLeader(){let b=mode=='s'?myPeerId:null;const nw=Date.now();for(const p of peers){if(nw-((p.presence&&p.presence.seen)||0)>5000)continue;if(b===null||p.peer<b)b=p.peer}const s=predSrc();if(s!==null&&(b===null||s<b))b=s;return b}
+window.onPred=p=>{if(!p||p.m!==MAPID||!Array.isArray(p.a)||p.id===myPeerId)return;PS[p.id]=performance.now();if(p.id!==predSrc())return;const nw=performance.now();for(const e of p.a)PRX[e[0]]={x:+e[1],y:+e[2],f:+e[3],c:e[4]?1:0,t:nw}};
 function targetsOf(stu){const L=[],nw=Date.now();if(stu)L.push({x:P.x,y:P.y,ok:!(performance.now()<inv)&&!caught&&!gameOver&&wingT<=0&&!hunter&&!cl&&!fell,h:!!hunter||!!cl});for(const p of peers){const q=p.presence;if(!q||p.peer===myPeerId||nw-(q.seen||0)>6000)continue;L.push({x:+q.x,y:+q.y,ok:!q.im&&!q.cg&&!q.h&&!q.ct&&(+q.z||0)<3&&(+q.z||0)>-.5,h:!!q.h||!!q.ct})}return L}
 function animTick(dt,stu){const t=performance.now()/1000,pn=performance.now(),imm=pn<inv,ld=predLeader(),lead=!!stu&&ld===myPeerId;let TG=null;for(const a of AN){let mv=0;
  if(PRED[a.k]){const PD=PRED[a.k],d=Math.hypot(P.x-a.x,P.y-a.y);if(stu)a.d=d;
-  if(!lead&&ld!==null&&ld!==myPeerId){
+  if(!lead&&ld!==null&&ld!==myPeerId&&(!stu||(PRX[a.k]&&pn-PRX[a.k].t<2500))){
    const pr=PRX[a.k],fresh=pr&&pn-pr.t<2500;
    if(fresh){const k=Math.min(1,dt*9),ox=a.x,oy=a.y;a.x+=(pr.x-a.x)*k;a.y+=(pr.y-a.y)*k;if(Math.hypot(pr.x-a.x,pr.y-a.y)>10){a.x=pr.x;a.y=pr.y}let da=pr.f-a.fa;da=((da+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;a.fa+=da*k;mv=Math.min(1,Math.hypot(a.x-ox,a.y-oy)/(dt*2.5+1e-6));a.cs=pr.c?5:a.sp;if(a.tag&&(!!pr.c)!==!!a.chase){a.chase=pr.c;tagDraw(a.tag,pr.c?PD.e+' '+PD.r:PD.e+' '+PD.n,0,0)}}
    a.G.scale.setScalar(a.chase?PD.sc*1.125:PD.sc);
@@ -606,7 +607,7 @@ function animTick(dt,stu){const t=performance.now()/1000,pn=performance.now(),im
    a.cs=s;if(a.tag&&(!!chase)!==!!a.chase){a.chase=chase;tagDraw(a.tag,chase?PD.e+' '+PD.r:PD.e+' '+PD.n,0,0)}a.G.scale.setScalar(a.chase?PD.sc*1.125:PD.sc);if(stu&&!hunter&&!caught&&!gameOver&&wingT<=0&&!imm&&!cl&&!fell&&d<.85*PD.sc&&Pz<1.4)bite(a)}}
  else{if(t>a.tt){a.tt=t+3+Math.random()*5;if(Math.random()<.4)a.idle=t+1.5+Math.random()*3;const an=Math.random()*6.28,d=2+Math.random()*7;a.tx=a.x+Math.cos(an)*d;a.ty=a.y+Math.sin(an)*d}if(a.idle<=t)mv=stepA(a,a.tx,a.ty,a.sp,dt)}
  a.ph+=dt*(PRED[a.k]?(a.cs||a.sp)*3.2:a.sp*6)*mv;a.legs.forEach((l,i)=>l.rotation.z=Math.sin(a.ph+(i%2?Math.PI:0))*.5*mv);a.G.position.set(a.x,Math.abs(Math.sin(a.ph))*.03*mv,a.y);a.G.rotation.y=-a.fa}
- if(lead&&peers.length&&t-lastPred>.11){lastPred=t;const A=[];for(const a of AN)if(PRED[a.k])A.push([a.k,+a.x.toFixed(2),+a.y.toFixed(2),+a.fa.toFixed(2),a.chase?1:0]);if(A.length)room.pred({id:myPeerId,m:MAPID,a:A})}
+ if(lead&&t-lastPred>.11){lastPred=t;const A=[];for(const a of AN)if(PRED[a.k])A.push([a.k,+a.x.toFixed(2),+a.y.toFixed(2),+a.fa.toFixed(2),a.chase?1:0]);if(A.length)room.pred({id:myPeerId,m:MAPID,a:A})}
  if(stu){let m=99,b=null;for(const q of AN)if(PRED[q.k]&&q.d<m){m=q.d;b=q}BEAR_D=m;BEAR=b}}
 function extras(ice){const T=THREE,mk=(g,c,x,y,z,sx,sy,sz)=>mesh(g,M(c),x,y,z,sx,sy,sz);
  SC.add(ribbon(RIVER.w+1.2,.02,ice?'#cfe6f6':'#e9cf86',1,1),ribbon(RIVER.w,.05,ice?'#6fc3ec':'#2f9ad0',ice?.95:.88,ice?.15:.08));
