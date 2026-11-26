@@ -33,6 +33,7 @@ nav{display:flex;gap:6px}nav button{flex:1;background:#4a3820;color:var(--t)}nav
 section{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0}
 #mapw{position:relative;flex:1;min-height:360px;border-radius:12px;overflow:hidden}
 #tc{width:100%;height:100%;display:block;touch-action:none}
+#thint{position:absolute;left:8px;bottom:8px;z-index:3;background:#000b;color:#fff;font-size:12px;padding:6px 10px;border-radius:8px;pointer-events:none;line-height:1.4}
 #zb{position:absolute;right:8px;top:8px;display:flex;flex-direction:column;gap:6px}#zb button{width:42px;height:42px;padding:0}
 #lbp{position:absolute;left:8px;top:8px;bottom:8px;width:280px;max-width:48%;display:flex;flex-direction:column;gap:6px;pointer-events:none}#lbp>*{pointer-events:auto}#lbp h3{margin:0;background:#000a;padding:8px 12px;border-radius:10px;font-size:15px}#lbp button{padding:10px;font-size:14px}#lb{margin:0;padding:0;list-style:none;overflow:auto;flex:1;font-size:13px}
 #lb li{padding:6px 8px;margin:4px 0;background:var(--p);border-left:5px solid #888;border-radius:6px}
@@ -135,7 +136,7 @@ select{font:inherit;border-radius:10px;border:1px solid #5b4524;background:var(-
 <div id="teach" hidden>
  <nav><button data-t="mon" class="on">Pantau</button><button data-t="qs">Soal</button><button data-t="mt">Materi</button><button data-t="cert">Sertifikat</button><button data-t="dat">Data</button><button id="bt">Keluar</button></nav>
  <section id="mon">
-  <div id="mapw"><canvas id="tc"></canvas><div id="lbp"><h3>🏆 Leaderboard</h3><div id="st"></div><div id="net" style="background:#172b18;padding:6px 8px;border-radius:6px;font-size:11px;line-height:1.4">Realtime: menyiapkan koneksi…</div><ol id="lb"></ol><button id="xl">⬇ Unduh Rekap (Excel)</button></div><div id="zb"><button id="zi">＋</button><button id="zo">－</button></div></div>
+  <div id="mapw"><canvas id="tc"></canvas><div id="lbp"><h3>🏆 Leaderboard</h3><div id="st"></div><div id="net" style="background:#172b18;padding:6px 8px;border-radius:6px;font-size:11px;line-height:1.4">Realtime: menyiapkan koneksi…</div><ol id="lb"></ol><button id="xl">⬇ Unduh Rekap (Excel)</button></div><div id="thint">🎮 WASD gerak · ←→ noleh · ↑↓ lihat atas/bawah · Q/E turun/naik · Shift cepat</div><div id="zb"><button id="zi">＋</button><button id="zo">－</button></div></div>
  </section>
  <section id="qs" hidden>
   <details id="aiq"><summary>✨ Buat soal dengan AI</summary><div class="ai"><input id="aiqt" placeholder="Topik soal (mis. Peninggalan sejarah Hindu-Buddha)"><div class="r"><input id="aiqj" placeholder="Jenjang (mis. MI kelas 5)"><select id="aiqk" style="max-width:130px"><option value="mix">Campuran</option><option value="mc">Pilihan ganda</option><option value="mr">Kompleks</option><option value="mj">Menjodohkan</option><option value="is">Isian singkat</option></select><input id="aiqn" type="number" min="1" max="20" value="5" style="max-width:90px"></div><input class="aikey" type="password" placeholder="API Key Claude (opsional, lebih stabil)" autocomplete="off"><button id="aiqb">✨ Buat Soal</button><small id="aiqm"></small></div></details>
@@ -592,7 +593,7 @@ window.onPred=p=>{if(!p||p.m!==MAPID||!Array.isArray(p.a)||p.id===myPeerId)retur
 function targetsOf(stu){const L=[],nw=Date.now();if(stu)L.push({x:P.x,y:P.y,ok:!(performance.now()<inv)&&!caught&&!gameOver&&wingT<=0&&!hunter&&!cl&&!fell,h:!!hunter||!!cl});for(const p of peers){const q=p.presence;if(!q||p.peer===myPeerId||nw-(q.seen||0)>6000)continue;L.push({x:+q.x,y:+q.y,ok:!q.im&&!q.cg&&!q.h&&!q.ct&&(+q.z||0)<3&&(+q.z||0)>-.5,h:!!q.h||!!q.ct})}return L}
 function animTick(dt,stu){const t=performance.now()/1000,pn=performance.now(),imm=pn<inv,ld=predLeader(),lead=!!stu&&ld===myPeerId;let TG=null;for(const a of AN){let mv=0;
  if(PRED[a.k]){const PD=PRED[a.k],d=Math.hypot(P.x-a.x,P.y-a.y);if(stu)a.d=d;
-  if(!lead&&ld!==null&&ld!==myPeerId&&(!stu||(PRX[a.k]&&pn-PRX[a.k].t<2500))){
+  if(!lead&&ld!==null&&ld!==myPeerId&&(PRX[a.k]&&pn-PRX[a.k].t<2500)){
    const pr=PRX[a.k],fresh=pr&&pn-pr.t<2500;
    if(fresh){const k=Math.min(1,dt*9),ox=a.x,oy=a.y;a.x+=(pr.x-a.x)*k;a.y+=(pr.y-a.y)*k;if(Math.hypot(pr.x-a.x,pr.y-a.y)>10){a.x=pr.x;a.y=pr.y}let da=pr.f-a.fa;da=((da+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;a.fa+=da*k;mv=Math.min(1,Math.hypot(a.x-ox,a.y-oy)/(dt*2.5+1e-6));a.cs=pr.c?5:a.sp;if(a.tag&&(!!pr.c)!==!!a.chase){a.chase=pr.c;tagDraw(a.tag,pr.c?PD.e+' '+PD.r:PD.e+' '+PD.n,0,0)}}
    a.G.scale.setScalar(a.chase?PD.sc*1.125:PD.sc);
@@ -732,7 +733,7 @@ function hit(){P.x=Math.min(W+8,Math.max(-8,P.x));P.y=Math.min(W+8,Math.max(-8,P
 function showDash(){show('dash');$('#dwho').textContent=DM=='s'?'Halo '+($('#nm').value.trim()||'Siswa')+'! Pilih peta petualanganmu.':'Mode Guru: pilih peta yang ingin dipantau.'}
 document.querySelectorAll('.mapc').forEach(b=>b.onclick=()=>{PICK=b.dataset.m;DM=='s'?startS():startT(PICK)});
 $('#dback').onclick=()=>show('home');
-window.startT=m=>{if(!initT())return;mode='g';if(SCm!==m||!SC)initW(m);me.visible=false;sh(75,260);show('teach');if(!tmOn){tmOn=true;tm()}};
+window.startT=m=>{if(!initT())return;mode='g';if(SCm!==m||!SC)initW(m);me.visible=false;sh(75,260);TC={x:W/2,z:W/2+55,a:55};az=0;el=.8;show('teach');if(!tmOn){tmOn=true;tm()}};
 /* ===== animasi hadiah: ikan (dunia es) & tulang dinosaurus (dunia harta karun) — berbeda untuk setiap peti ===== */
 const FS=[['Ikan Salmon','#f0795a','#ffd2c0','s',1],['Ikan Biru Safir','#3f8fe0','#cfe9ff','t',1],['Ikan Emas Bulat','#ffb52e','#fff0b0','p',.95],['Ikan Zamrud','#35c283','#d6ffe9','d',1],['Ikan Ungu Pelangi','#9a6bde','#e6d8ff','b',1.05],['Ikan Badut','#ff7a1a','#ffffff','c',.95],['Ikan Pari Es','#7a9fc0','#e8f2fa','f',1.1],['Ikan Kristal Raksasa','#9fe8ff','#ffffff','g',1.2],['Ikan Buntal Salju','#f3c75a','#fff7dc','u',1],['Ikan Pedang Perak','#7f9fc4','#eef4fa','w',1],['Ikan Lampu Senter','#5b4a9a','#9a88d0','a',1],['Ikan Koi Merah Putih','#fbf6ee','#ffffff','k',1.05],['Ikan Cupang Biru','#2a6fe0','#8fc0ff','v',1],['Hiu Mini Es','#7f93a8','#e4edf5','h',1.05]];
 const BN=['Tengkorak T-Rex','Ekor Diplodocus','Tulang Lengan Allosaurus','Tulang Rusuk Triceratops','Tulang Paha Brachiosaurus','Cakar Velociraptor','Rahang Spinosaurus','Tulang Punggung Stegosaurus','Tengkorak Triceratops','Tulang Panggul Stegosaurus','Ekor Gada Ankylosaurus','Tulang Sayap Pteranodon'],BT=['#f4ecd6','#efe0c0','#e6e2d4','#f0d9c4'];
@@ -1073,8 +1074,8 @@ $('#bg').onclick=()=>{const pw=$('#pw');if(pw.hidden){pw.hidden=false;pw.focus()
 document.querySelectorAll('nav [data-t]').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x==b));
  $('#mon').hidden=b.dataset.t!='mon';$('#qs').hidden=b.dataset.t!='qs';$('#mt').hidden=b.dataset.t!='mt';$('#cert').hidden=b.dataset.t!='cert';$('#dat').hidden=b.dataset.t!='dat'});
-$('#zi').onclick=()=>Z=Math.min(6,Z*1.3);$('#zo').onclick=()=>Z=Math.max(.6,Z/1.3);
-const tc=$('#tc');let R4,CT,sfog,tfog,az=0,el=.85,TP={},tl=0;
+$('#zi').onclick=()=>TC.a=Math.max(4,TC.a/1.25);$('#zo').onclick=()=>TC.a=Math.min(140,TC.a*1.25);
+const tc=$('#tc');let R4,CT,sfog,tfog,az=0,el=.8,TP={},tl=0,TC={x:50,z:105,a:55};
 const sh=(n,f)=>{const c=dl.shadow.camera;c.left=c.bottom=-n;c.right=c.top=n;c.far=f;c.updateProjectionMatrix()};
 function initT(){
  if(R4)return true;
@@ -1083,13 +1084,21 @@ function initT(){
  try{R4=new THREE.WebGLRenderer({canvas:tc,antialias:QS[QL].aa});R4.setPixelRatio(Math.min(devicePixelRatio||1,QS[QL].pr));R4.shadowMap.enabled=QS[QL].sh>0;CT=new THREE.PerspectiveCamera(50,1,.5,800);return true}
  catch(e){$('#gm').textContent='3D tidak bisa dijalankan di perangkat ini (WebGL).';return false}
 }
-tc.onwheel=e=>{e.preventDefault();Z=Math.min(6,Math.max(.6,Z*(e.deltaY<0?1.1:.9)))};
-tc.onpointermove=e=>{if(e.buttons){az-=e.movementX*.006;el=Math.min(1.45,Math.max(.35,el+e.movementY*.004))}};
+tc.onwheel=e=>{e.preventDefault();TC.a=Math.min(140,Math.max(4,TC.a*(e.deltaY<0?.9:1.1)))};
+tc.onpointermove=e=>{if(e.buttons){az-=e.movementX*.005;el=Math.min(1.5,Math.max(-.4,el+e.movementY*.004))}};
+const TK={},tkOK=e=>mode=='g'&&!$('#mon').hidden&&!/INPUT|TEXTAREA|SELECT/.test((e.target&&e.target.tagName)||'');
+addEventListener('keydown',e=>{if(!tkOK(e))return;if(/^(Key[WASDQE]|Arrow(Up|Down|Left|Right)|Shift(Left|Right))$/.test(e.code)){e.preventDefault();TK[e.code]=1}});
+addEventListener('keyup',e=>{TK[e.code]=0});addEventListener('blur',()=>{for(const k in TK)TK[k]=0});
+function tcTick(dt){const k=TK,sp=(14+TC.a*.55)*((k.ShiftLeft||k.ShiftRight)?2.2:1);
+ if(k.ArrowLeft)az+=dt*1.6;if(k.ArrowRight)az-=dt*1.6;if(k.ArrowUp)el=Math.max(-.4,el-dt*1.2);if(k.ArrowDown)el=Math.min(1.5,el+dt*1.2);
+ const fw=(k.KeyW?1:0)-(k.KeyS?1:0),sd=(k.KeyD?1:0)-(k.KeyA?1:0),fx=-Math.sin(az),fz=-Math.cos(az),gx=Math.cos(az),gz=-Math.sin(az);
+ TC.x=Math.min(W+30,Math.max(-30,TC.x+(fx*fw+gx*sd)*sp*dt));TC.z=Math.min(W+60,Math.max(-30,TC.z+(fz*fw+gz*sd)*sp*dt));
+ if(k.KeyE)TC.a=Math.min(140,TC.a+dt*30);if(k.KeyQ)TC.a=Math.max(4,TC.a-dt*30)}
 function mkLab(){const c=document.createElement('canvas');c.width=360;c.height=120;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));sp.scale.set(5.4,1.8,1);sp.position.y=2.6;sp.renderOrder=5;return{c,sp}}
 function labDraw(L,n,s,top){const g=L.c.getContext('2d');g.clearRect(0,0,360,120);g.fillStyle=top?'#e8b04a':'rgba(20,14,6,.82)';g.beginPath();g.roundRect(4,4,352,112,26);g.fill();g.strokeStyle=top?'#fff':'#e8b04a';g.lineWidth=5;g.stroke();g.textAlign='center';g.fillStyle=top?'#2a1a05':'#fff';g.font='bold 40px sans-serif';g.fillText((top?'👑 ':'')+String(n).slice(0,12),180,52);g.font='34px sans-serif';g.fillText(s+' poin',180,96);L.sp.material.map.needsUpdate=true}
 function tm(){
  if(mode=='g'&&!$('#mon').hidden&&R4){
-  const t=performance.now()/1000,dt=Math.min(.1,t-tl||.016);tl=t;if(WF)WF.offset.y=t*1.25;animTick(dt,0);if(CAVE&&CAVE.chest)chestAnim(CAVE.chest,t,2);if(CAVE&&CAVE.bar)CAVE.bar.visible=false;for(const c of chests){const vi=c.userData.i<nSP();c.visible=vi;if(vi)chestAnim(c,t,2.4)}
+  const t=performance.now()/1000,dt=Math.min(.1,t-tl||.016);tl=t;if(WF)WF.offset.y=t*1.25;try{animTick(dt,0)}catch(err){console.warn('animTick',err)}if(CAVE&&CAVE.chest)chestAnim(CAVE.chest,t,2);if(CAVE&&CAVE.bar)CAVE.bar.visible=false;for(const c of chests){const vi=c.userData.i<nSP();c.visible=vi;if(vi)chestAnim(c,t,2.4)}
   const w=tc.clientWidth,h=tc.clientHeight;if(w&&h&&(R4._w!=w||R4._h!=h)){R4.setSize(w,h,false);R4._w=w;R4._h=h;CT.aspect=w/h;CT.updateProjectionMatrix()}
   const top=Math.max(0,...peers.map(p=>p.presence.s||0)),ids=new Set();
   for(const p of peers){const q=p.presence,id=p.peer;ids.add(id);let e=TP[id];
@@ -1099,7 +1108,7 @@ function tm(){
    e.sc+=((tp?4.2:2)-e.sc)*Math.min(1,dt*3);G.scale.setScalar(e.sc);
    const k=q.n+'|'+q.s+'|'+tp;if(k!=e.k){e.k=k;labDraw(e.L,q.n,q.s||0,tp)}}
   for(const id in TP)if(!ids.has(id)){SC.remove(TP[id].G);delete TP[id]}
-  const d=150/Z,h2=W/2;CT.position.set(h2+Math.sin(az)*Math.cos(el)*d,Math.sin(el)*d,h2+Math.cos(az)*Math.cos(el)*d);CT.lookAt(h2,0,h2);
+  tcTick(dt);{const ce=Math.cos(el);CT.position.set(TC.x,TC.a,TC.z);CT.lookAt(TC.x-Math.sin(az)*ce*20,TC.a-Math.sin(el)*20,TC.z-Math.cos(az)*ce*20)}
   dl.position.set(W/2+26,70,W/2+16);dl.target.position.set(W/2,0,W/2);SC.fog=tfog;R4.render(SC,CT);
  }
  requestAnimationFrame(tm);
