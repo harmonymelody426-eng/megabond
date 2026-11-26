@@ -1255,14 +1255,24 @@ const au=n=>AU[n]||(AU[n]=Object.assign(new Audio(TR[n]),{loop:n!=='win',preload
 const LF=Object.assign(new Audio('evillaugh.mp3'),{loop:true,preload:'auto',volume:.7});
 /* ----- SFX beruang: beruang.mp3 (satu folder dengan index.html). Hanya di mode siswa, saat beruang dekat; makin dekat makin keras & makin sering ----- */
 const BR_NEAR=24,SFXA={};
-const sfxOf=k=>SFXA[k]||(()=>{const a=Object.assign(new Audio(PRED[k].f),{preload:'auto',volume:0});a.nx=0;a.dd=99;a.addEventListener('ended',()=>{a.nx=performance.now()+900+Math.max(0,a.dd)*160});return SFXA[k]=a})();
+const SFX_ALT={kunti:['kunti.wav','kunti.mp3','kuntilanak.mp3','kuntilanak.wav','kunti.ogg','kuntilanak.ogg','kunti.m4a'],pocong:['pocong.mp3','pocong.wav','pocong.ogg','pocong.m4a']};
+const sfxOf=k=>SFXA[k]||(()=>{const L=[PRED[k].f,...(SFX_ALT[k]||[]).filter(f=>f!==PRED[k].f)];let i=0;const a=Object.assign(new Audio(L[0]),{preload:'auto',volume:0});a.nx=0;a.dd=99;a.bad=false;
+ a.nxt=()=>{if(a.bad)return;i++;if(i<L.length){a.src=L[i];a.load()}else{a.bad=true;console.warn('Suara '+k+' tidak ditemukan. Sudah dicoba: '+L.join(', ')+'. Memakai suara buatan.')}};
+ a.addEventListener('error',a.nxt);a.addEventListener('ended',()=>{a.nx=performance.now()+900+Math.max(0,a.dd)*160});return SFXA[k]=a})();
+/* suara buatan (cadangan) bila file suara hantu tidak ada */
+let AC=null;const SN={};
+function synthGhost(k,vol){if(k!='kunti'&&k!='pocong')return 0;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state=='suspended')AC.resume();const t0=AC.currentTime+.02,g=AC.createGain();g.gain.value=Math.max(.05,Math.min(1,vol))*.6;g.connect(AC.destination);
+ if(k=='kunti'){const n=7;for(let i=0;i<n;i++){const o=AC.createOscillator(),f=AC.createBiquadFilter(),e=AC.createGain(),st=t0+i*.26;o.type='sawtooth';o.frequency.setValueAtTime(900-i*35,st);o.frequency.linearRampToValueAtTime(1250-i*45,st+.12);o.frequency.linearRampToValueAtTime(780-i*30,st+.24);f.type='bandpass';f.frequency.value=1500;f.Q.value=3;e.gain.setValueAtTime(0,st);e.gain.linearRampToValueAtTime(.8,st+.04);e.gain.linearRampToValueAtTime(0,st+.25);o.connect(f);f.connect(e);e.connect(g);o.start(st);o.stop(st+.27)}return n*.26}
+ {const o=AC.createOscillator(),f=AC.createBiquadFilter(),e=AC.createGain(),l=AC.createOscillator(),lg=AC.createGain();o.type='sawtooth';o.frequency.setValueAtTime(110,t0);o.frequency.linearRampToValueAtTime(55,t0+1.8);f.type='lowpass';f.frequency.value=320;l.frequency.value=5.5;lg.gain.value=.35;e.gain.setValueAtTime(0,t0);e.gain.linearRampToValueAtTime(.7,t0+.3);e.gain.linearRampToValueAtTime(0,t0+1.8);l.connect(lg);lg.connect(e.gain);o.connect(f);f.connect(e);e.connect(g);o.start(t0);l.start(t0);o.stop(t0+1.85);l.stop(t0+1.85);
+  for(let i=0;i<3;i++){const h=AC.createOscillator(),he=AC.createGain(),st=t0+.4+i*.5;h.type='sine';h.frequency.setValueAtTime(75,st);h.frequency.exponentialRampToValueAtTime(30,st+.18);he.gain.setValueAtTime(.9,st);he.gain.exponentialRampToValueAtTime(.001,st+.22);h.connect(he);he.connect(g);h.start(st);h.stop(st+.25)}return 1.9}}catch(e){return 0}}
 const BRA={get paused(){return Object.values(SFXA).every(a=>a.paused)},pause(){Object.values(SFXA).forEach(a=>{if(!a.paused)a.pause()})}};
 function bearSfx(){const base=mode=='s'&&!gameOver&&!muted;
  for(const k in PRED){let dm=99;if(base)for(const q of AN)if(q.k==k&&q.d<dm)dm=q.d;
   if(!(base&&dm<BR_NEAR)){const a=SFXA[k];if(a&&!a.paused)a.pause();continue}
   const a=sfxOf(k);a.dd=dm;
+  if(a.bad){const nw=performance.now();if(nw>=(SN[k]||0)){const du=synthGhost(k,Math.pow(1-dm/BR_NEAR,1.1)*1.1);SN[k]=nw+(du||1)*1000+900+dm*160}continue}
   try{a.volume=Math.max(.1,Math.min(1,Math.pow(1-dm/BR_NEAR,1.1)*1.1))}catch(e){}
-  if((a.paused||a.ended)&&performance.now()>=a.nx){a.currentTime=0;a.play().catch(()=>{})}}}
+  if((a.paused||a.ended)&&performance.now()>=a.nx){a.currentTime=0;a.play().catch(e=>{if(e&&e.name=='NotSupportedError'&&a.nxt)a.nxt()})}}}
 function laughSync(){const on=mode=='s'&&!gameOver&&MAPID!='kuburan'&&(hunter||hSt.hs>0);if(on&&!muted){if(LF.paused)LF.play().catch(()=>{})}else if(!LF.paused){LF.pause();LF.currentTime=0}}
 function musicSync(){laughSync();if(mode!='s'&&!BRA.paused)BRA.pause();
  const want=mode=='s'?(gameOver?'win':(hunter||hSt.hs>0)?(MAPID=='kuburan'?'kbeast':'beast'):(MAPID=='kuburan'?'kfarm':'farm')):mode=='g'?null:'intro';
